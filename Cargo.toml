@@ -1,0 +1,10 @@
+[package]
+name = "custom_pipeline"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bevy = { version = "0.7.0", default-features = false, features = ["render", "x11", "png", "bevy_winit", "serialize", "filesystem_watcher", "dynamic"]}
+bytemuck = "1.11.0"
