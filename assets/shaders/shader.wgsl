@@ -11,6 +11,10 @@ var texture: texture_2d<f32>;
 [[group(1), binding(1)]]
 var texture_sampler: sampler;
 [[group(1), binding(2)]]
+var light_map: texture_2d<f32>;
+[[group(1), binding(3)]]
+var light_map_sampler: sampler;
+[[group(1), binding(4)]]
 var<uniform> data: Data;
 [[group(2), binding(0)]]
 var<uniform> mesh: Mesh2d;
@@ -37,5 +41,6 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 [[stage(fragment)]]
 fn fragment(in: VertexOutput) -> [[location(0)]] vec4<f32> {
     let color = textureSample(texture, texture_sampler, in.tex_coords);
-    return color;
+    let light = textureSample(light_map, light_map_sampler, in.tex_coords);
+    return color * light.x;
 }

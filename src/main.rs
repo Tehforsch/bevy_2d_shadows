@@ -85,10 +85,10 @@ impl RenderAsset for MyMaterial {
             Some(gpu_image) => gpu_image,
             None => return Err(PrepareAssetError::RetryNextUpdate(extracted_asset)),
         };
-        // let light_map = match gpu_images.get(&extracted_asset.light_map) {
-        //     Some(gpu_image) => gpu_image,
-        //     None => return Err(PrepareAssetError::RetryNextUpdate(extracted_asset)),
-        // };
+        let light_map = match gpu_images.get(&extracted_asset.light_map) {
+            Some(gpu_image) => gpu_image,
+            None => return Err(PrepareAssetError::RetryNextUpdate(extracted_asset)),
+        };
 
         let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
             contents: extracted_asset.shader_data.as_std140().as_bytes(),
@@ -105,17 +105,16 @@ impl RenderAsset for MyMaterial {
                     binding: 1,
                     resource: BindingResource::Sampler(&gpu_image.sampler),
                 },
-                // BindGroupEntry {
-                //     binding: 2,
-                //     resource: BindingResource::TextureView(&light_map.texture_view),
-                // },
-                // BindGroupEntry {
-                //     binding: 3,
-                //     resource: BindingResource::Sampler(&light_map.sampler),
-                // },
                 BindGroupEntry {
-                    // binding: 4,
                     binding: 2,
+                    resource: BindingResource::TextureView(&light_map.texture_view),
+                },
+                BindGroupEntry {
+                    binding: 3,
+                    resource: BindingResource::Sampler(&light_map.sampler),
+                },
+                BindGroupEntry {
+                    binding: 4,
                     resource: buffer.as_entire_binding(),
                 },
             ],
@@ -159,25 +158,24 @@ impl Material2d for MyMaterial {
                     ty: BindingType::Sampler(SamplerBindingType::Filtering),
                     count: None,
                 },
-                // BindGroupLayoutEntry {
-                //     binding: 2,
-                //     visibility: ShaderStages::FRAGMENT,
-                //     ty: BindingType::Texture {
-                //         sample_type: TextureSampleType::Float { filterable: true },
-                //         view_dimension: TextureViewDimension::D2,
-                //         multisampled: false,
-                //     },
-                //     count: None,
-                // },
-                // BindGroupLayoutEntry {
-                //     binding: 3,
-                //     visibility: ShaderStages::FRAGMENT,
-                //     ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                //     count: None,
-                // },
                 BindGroupLayoutEntry {
-                    // binding: 4,
                     binding: 2,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        sample_type: TextureSampleType::Float { filterable: true },
+                        view_dimension: TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 4,
                     visibility: ShaderStages::VERTEX_FRAGMENT,
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
@@ -199,7 +197,7 @@ fn setup(
     asset_server: Res<AssetServer>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    let mesh = Mesh::from(Quad::new(Vec2::new(600.0, 400.0)));
+    asset_server.watch_for_changes().unwrap();
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
 
     let size = Extent3d {
@@ -222,11 +220,15 @@ fn setup(
         ..default()
     };
 
-    let image_handle = images.add(light_map);
+    // let image_handle = images.add(light_map);
+
+    let mesh = Mesh::from(Quad::new(Vec2::new(600.0, 400.0)));
     commands.spawn_bundle(MaterialMesh2dBundle {
         mesh: Mesh2dHandle(meshes.add(mesh)),
-        material: custom_materials
-            .add(MyMaterial::new(asset_server.load("tree.png"), image_handle)),
+        material: custom_materials.add(MyMaterial::new(
+            asset_server.load("tree.png"),
+            asset_server.load("tree.png"),
+        )),
         ..default()
     });
 }
