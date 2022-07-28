@@ -1,7 +1,11 @@
 use bevy::core_pipeline::draw_2d_graph;
+use bevy::core_pipeline::draw_3d_graph;
 use bevy::core_pipeline::node;
+use bevy::core_pipeline::AlphaMask3d;
+use bevy::core_pipeline::Opaque3d;
 use bevy::core_pipeline::RenderTargetClearColors;
 use bevy::core_pipeline::Transparent2d;
+use bevy::core_pipeline::Transparent3d;
 use bevy::ecs::system::lifetimeless::SRes;
 use bevy::ecs::system::SystemParamItem;
 use bevy::prelude::shape::Quad;
@@ -87,6 +91,11 @@ impl MyMaterial {
 #[derive(Clone)]
 pub struct MyGpuMaterial {
     bind_group: BindGroup,
+}
+
+fn print_image_system(images: Res<Assets<Image>>, light_map: Res<RememberLightMap>) {
+    let image = images.get(light_map.0.clone().unwrap()).unwrap();
+    println!("{}", image.data.iter().map(|x| *x as i32).sum::<i32>());
 }
 
 impl RenderAsset for MyMaterial {
@@ -254,13 +263,17 @@ pub fn new_2d(render_target: Handle<Image>) -> OrthographicCameraBundle<FirstPas
     }
 }
 
+struct RememberLightMap(Option<Handle<Image>>);
+
 fn setup(
     mut commands: Commands,
     mut custom_materials: ResMut<Assets<MyMaterial>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     asset_server: Res<AssetServer>,
     mut images: ResMut<Assets<Image>>,
     mut clear_colors: ResMut<RenderTargetClearColors>,
+    mut remember_light_map: ResMut<RememberLightMap>,
 ) {
     asset_server.watch_for_changes().unwrap();
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
@@ -287,7 +300,7 @@ fn setup(
 
     light_map.resize(size);
 
-    for (i, v) in light_map.data.iter_mut().enumerate() {
+    for (i, v) in light_map.data.chunks_exact_mut(4).enumerate() {
         let y = i / 512;
         let x = i.rem_euclid(512);
         let dist = ((x as f32 - 250.0).powi(2) + (y as f32 - 200.0).powi(2)).sqrt();
@@ -295,22 +308,35 @@ fn setup(
             true => 1.0,
             false => (-(dist - 100.0) * 0.009).exp(),
         };
-        *v = (val * 255.0) as u8;
+        v[0] = (val * 255.0) as u8;
+        v[1] = (val * 255.0) as u8;
+        v[2] = (val * 255.0) as u8;
+        v[3] = (val * 255.0) as u8;
     }
 
     let light_map_handle = images.add(light_map);
+    *remember_light_map = RememberLightMap(Some(light_map_handle.clone()));
 
-    // first pass stuff
+    let cube_handle = meshes.add(Mesh::from(shape::Cube { size: 4.0 }));
+    let cube_material_handle = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.8, 0.7, 0.6),
+        reflectance: 0.02,
+        unlit: false,
+        ..default()
+    });
+
     // This specifies the layer used for the first pass, which will be attached to the first pass camera and cube.
     let first_pass_layer = RenderLayers::layer(1);
 
     // The cube that will be rendered to the texture.
     commands
-        .spawn_bundle(SpriteBundle {
-            texture: asset_server.load("box.png"),
+        .spawn_bundle(PbrBundle {
+            mesh: cube_handle,
+            material: cube_material_handle,
+            transform: Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)),
             ..default()
         })
-        .insert(FirstPassObject)
+        .insert(FirstPassCube)
         .insert(first_pass_layer);
 
     // Light
@@ -324,7 +350,15 @@ fn setup(
     let render_target = RenderTarget::Image(light_map_handle.clone());
     clear_colors.insert(render_target.clone(), Color::WHITE);
     commands
-        .spawn_bundle(new_2d(light_map_handle.clone()))
+        .spawn_bundle(PerspectiveCameraBundle::<FirstPassCamera> {
+            camera: Camera {
+                target: render_target,
+                ..default()
+            },
+            transform: Transform::from_translation(Vec3::new(0.0, 0.0, 15.0))
+                .looking_at(Vec3::default(), Vec3::Y),
+            ..PerspectiveCameraBundle::new()
+        })
         .insert(first_pass_layer);
     // NOTE: omitting the RenderLayers component for this camera may cause a validation error:
     //
@@ -342,14 +376,14 @@ fn setup(
 
     // second pass stuff
     let mesh = Mesh::from(Quad::new(Vec2::new(600.0, 400.0)));
-    // commands.spawn_bundle(MaterialMesh2dBundle {
-    //     mesh: Mesh2dHandle(meshes.add(mesh)),
-    //     material: custom_materials.add(MyMaterial::new(
-    //         asset_server.load("tree.png"),
-    //         light_map_handle,
-    //     )),
-    //     ..default()
-    // });
+    commands.spawn_bundle(MaterialMesh2dBundle {
+        mesh: Mesh2dHandle(meshes.add(mesh)),
+        material: custom_materials.add(MyMaterial::new(
+            asset_server.load("tree.png"),
+            light_map_handle,
+        )),
+        ..default()
+    });
 }
 
 fn main() {
@@ -357,10 +391,14 @@ fn main() {
     app.add_plugins(DefaultPlugins)
         .add_plugin(Material2dPlugin::<MyMaterial>::default())
         .add_plugin(CameraTypePlugin::<FirstPassCamera>::default())
+        .add_system(rotator_system)
+        .insert_resource(RememberLightMap(None))
+        .add_system(print_image_system)
         .add_startup_system(setup);
 
     let render_app = app.sub_app_mut(RenderApp);
     let driver = FirstPassCameraDriver::new(&mut render_app.world);
+    // This will add 3D render phases for the new camera.
     render_app.add_system_to_stage(RenderStage::Extract, extract_first_pass_camera_phases);
 
     let mut graph = render_app.world.resource_mut::<RenderGraph>();
@@ -380,21 +418,24 @@ fn main() {
     graph
         .add_node_edge(FIRST_PASS_DRIVER, node::MAIN_PASS_DRIVER)
         .unwrap();
-
     app.run();
 }
 
+// Add 3D render phases for FIRST_PASS_CAMERA.
 fn extract_first_pass_camera_phases(
     mut commands: Commands,
     active: Res<ActiveCamera<FirstPassCamera>>,
 ) {
     if let Some(entity) = active.get() {
-        commands
-            .get_or_spawn(entity)
-            .insert_bundle((RenderPhase::<Transparent2d>::default(),));
+        commands.get_or_spawn(entity).insert_bundle((
+            RenderPhase::<Opaque3d>::default(),
+            RenderPhase::<AlphaMask3d>::default(),
+            RenderPhase::<Transparent3d>::default(),
+        ));
     }
 }
 
+// A node for the first pass camera that runs draw_3d_graph with this camera.
 struct FirstPassCameraDriver {
     query: QueryState<Entity, With<FirstPassCamera>>,
 }
@@ -406,7 +447,6 @@ impl FirstPassCameraDriver {
         }
     }
 }
-
 impl Node for FirstPassCameraDriver {
     fn update(&mut self, world: &mut World) {
         self.query.update_archetypes(world);
@@ -419,9 +459,19 @@ impl Node for FirstPassCameraDriver {
         world: &World,
     ) -> Result<(), NodeRunError> {
         for camera in self.query.iter_manual(world) {
-            dbg!("No idea what this means");
-            graph.run_sub_graph(draw_2d_graph::NAME, vec![SlotValue::Entity(camera)])?;
+            graph.run_sub_graph(draw_3d_graph::NAME, vec![SlotValue::Entity(camera)])?;
         }
         Ok(())
+    }
+}
+
+// Marks the first pass cube (rendered to a texture.)
+#[derive(Component)]
+struct FirstPassCube;
+
+fn rotator_system(time: Res<Time>, mut query: Query<&mut Transform, With<FirstPassCube>>) {
+    for mut transform in query.iter_mut() {
+        transform.rotation *= Quat::from_rotation_x(1.5 * time.delta_seconds());
+        transform.rotation *= Quat::from_rotation_z(1.3 * time.delta_seconds());
     }
 }
