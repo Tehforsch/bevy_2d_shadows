@@ -1,280 +1,315 @@
-use bevy::core_pipeline::Transparent3d;
-use bevy::ecs::system::lifetimeless::*;
-use bevy::ecs::system::SystemParamItem;
-use bevy::math::prelude::*;
-use bevy::pbr::MeshPipeline;
-use bevy::pbr::MeshPipelineKey;
-use bevy::pbr::MeshUniform;
-use bevy::pbr::SetMeshBindGroup;
-use bevy::pbr::SetMeshViewBindGroup;
+use bevy::core::FloatOrd;
+use bevy::core_pipeline::Transparent2d;
 use bevy::prelude::*;
-use bevy::render::mesh::GpuBufferInfo;
-use bevy::render::mesh::MeshVertexBufferLayout;
+use bevy::reflect::TypeUuid;
+use bevy::render::mesh::Indices;
 use bevy::render::render_asset::RenderAssets;
-use bevy::render::render_component::ExtractComponent;
-use bevy::render::render_component::ExtractComponentPlugin;
 use bevy::render::render_phase::AddRenderCommand;
 use bevy::render::render_phase::DrawFunctions;
-use bevy::render::render_phase::EntityRenderCommand;
-use bevy::render::render_phase::RenderCommandResult;
 use bevy::render::render_phase::RenderPhase;
 use bevy::render::render_phase::SetItemPipeline;
-use bevy::render::render_phase::TrackedRenderPass;
-use bevy::render::render_resource::*;
-use bevy::render::renderer::RenderDevice;
-use bevy::render::view::ComputedVisibility;
-use bevy::render::view::ExtractedView;
-use bevy::render::view::Msaa;
-use bevy::render::view::NoFrustumCulling;
-use bevy::render::view::Visibility;
+use bevy::render::render_resource::BlendState;
+use bevy::render::render_resource::ColorTargetState;
+use bevy::render::render_resource::ColorWrites;
+use bevy::render::render_resource::Face;
+use bevy::render::render_resource::FragmentState;
+use bevy::render::render_resource::FrontFace;
+use bevy::render::render_resource::MultisampleState;
+use bevy::render::render_resource::PipelineCache;
+use bevy::render::render_resource::PolygonMode;
+use bevy::render::render_resource::PrimitiveState;
+use bevy::render::render_resource::PrimitiveTopology;
+use bevy::render::render_resource::RenderPipelineDescriptor;
+use bevy::render::render_resource::SpecializedRenderPipeline;
+use bevy::render::render_resource::SpecializedRenderPipelines;
+use bevy::render::render_resource::TextureFormat;
+use bevy::render::render_resource::VertexBufferLayout;
+use bevy::render::render_resource::VertexFormat;
+use bevy::render::render_resource::VertexState;
+use bevy::render::render_resource::VertexStepMode;
+use bevy::render::texture::BevyDefault;
+use bevy::render::view::VisibleEntities;
 use bevy::render::RenderApp;
 use bevy::render::RenderStage;
-use bytemuck::Pod;
-use bytemuck::Zeroable;
+use bevy::sprite::DrawMesh2d;
+use bevy::sprite::Mesh2dHandle;
+use bevy::sprite::Mesh2dPipeline;
+use bevy::sprite::Mesh2dPipelineKey;
+use bevy::sprite::Mesh2dUniform;
+use bevy::sprite::SetMesh2dBindGroup;
+use bevy::sprite::SetMesh2dViewBindGroup;
 
+/// This example shows how to manually render 2d items using "mid level render apis" with a custom pipeline for 2d meshes
+/// It doesn't use the [`Material2d`] abstraction, but changes the vertex buffer to include vertex color
+/// Check out the "mesh2d" example for simpler / higher level 2d meshes
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugin(CustomMaterialPlugin)
-        .add_startup_system(setup)
+        .add_plugin(ColoredMesh2dPlugin)
+        .add_startup_system(star)
         .run();
 }
 
-fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
-    commands.spawn().insert_bundle((
-        meshes.add(Mesh::from(shape::Cube { size: 0.5 })),
-        Transform::from_xyz(0.0, 0.0, 0.0),
+fn star(
+    mut commands: Commands,
+    // We will add a new Mesh for the star being created
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
+    // Let's define the mesh for the object we want to draw: a nice star.
+    // We will specify here what kind of topology is used to define the mesh,
+    // that is, how triangles are built from the vertices. We will use a
+    // triangle list, meaning that each vertex of the triangle has to be
+    // specified.
+    let mut star = Mesh::new(PrimitiveTopology::TriangleList);
+
+    // Vertices need to have a position attribute. We will use the following
+    // vertices (I hope you can spot the star in the schema).
+    //
+    //        1
+    //
+    //     10   2
+    // 9      0      3
+    //     8     4
+    //        6
+    //   7        5
+    //
+    // These vertices are specificed in 3D space.
+    let mut v_pos = vec![[0.0, 0.0, 0.0]];
+    for i in 0..10 {
+        // Angle of each vertex is 1/10 of TAU, plus PI/2 for positioning vertex 0
+        let a = std::f32::consts::FRAC_PI_2 - i as f32 * std::f32::consts::TAU / 10.0;
+        // Radius of internal vertices (2, 4, 6, 8, 10) is 100, it's 200 for external
+        let r = (1 - i % 2) as f32 * 100.0 + 100.0;
+        // Add the vertex coordinates
+        v_pos.push([r * a.cos(), r * a.sin(), 0.0]);
+    }
+    // Set the position attribute
+    star.insert_attribute(Mesh::ATTRIBUTE_POSITION, v_pos);
+    // And a RGB color attribute as well
+    let mut v_color: Vec<u32> = vec![Color::BLACK.as_linear_rgba_u32()];
+    v_color.extend_from_slice(&[Color::YELLOW.as_linear_rgba_u32(); 10]);
+    star.insert_attribute(Mesh::ATTRIBUTE_COLOR, v_color);
+
+    // Now, we specify the indices of the vertex that are going to compose the
+    // triangles in our star. Vertices in triangles have to be specified in CCW
+    // winding (that will be the front face, colored). Since we are using
+    // triangle list, we will specify each triangle as 3 vertices
+    //   First triangle: 0, 2, 1
+    //   Second triangle: 0, 3, 2
+    //   Third triangle: 0, 4, 3
+    //   etc
+    //   Last triangle: 0, 1, 10
+    let mut indices = vec![0, 1, 10];
+    for i in 2..=10 {
+        indices.extend_from_slice(&[0, i, i - 1]);
+    }
+    star.set_indices(Some(Indices::U32(indices)));
+
+    // We can now spawn the entities for the star and the camera
+    commands.spawn_bundle((
+        // We use a marker component to identify the custom colored meshes
+        ColoredMesh2d::default(),
+        // The `Handle<Mesh>` needs to be wrapped in a `Mesh2dHandle` to use 2d rendering instead of 3d
+        Mesh2dHandle(meshes.add(star)),
+        // These other components are needed for 2d meshes to be rendered
+        Transform::default(),
         GlobalTransform::default(),
-        InstanceMaterialData(
-            (1..=10)
-                .flat_map(|x| (1..=10).map(move |y| (x as f32 / 10.0, y as f32 / 10.0)))
-                .map(|(x, y)| InstanceData {
-                    position: Vec3::new(x * 10.0 - 5.0, y * 10.0 - 5.0, 0.0),
-                    scale: 1.0,
-                    color: Color::hsla(x * 360., y, 0.5, 1.0).as_rgba_f32(),
-                })
-                .collect(),
-        ),
         Visibility::default(),
         ComputedVisibility::default(),
-        // NOTE: Frustum culling is done based on the Aabb of the Mesh and the GlobalTransform.
-        // As the cube is at the origin, if its Aabb moves outside the view frustum, all the
-        // instanced cubes will be culled.
-        // The InstanceMaterialData contains the 'GlobalTransform' information for this custom
-        // instancing, and that is not taken into account with the built-in frustum culling.
-        // We must disable the built-in frustum culling by adding the `NoFrustumCulling` marker
-        // component to avoid incorrect culling.
-        NoFrustumCulling,
     ));
-
-    // camera
-    commands.spawn_bundle(PerspectiveCameraBundle {
-        transform: Transform::from_xyz(0.0, 0.0, 15.0).looking_at(Vec3::ZERO, Vec3::Y),
-        ..default()
-    });
+    commands
+        // And use an orthographic projection
+        .spawn_bundle(OrthographicCameraBundle::new_2d());
 }
 
-#[derive(Component, Deref)]
-struct InstanceMaterialData(Vec<InstanceData>);
-impl ExtractComponent for InstanceMaterialData {
-    type Query = &'static InstanceMaterialData;
-    type Filter = ();
+/// A marker component for colored 2d meshes
+#[derive(Component, Default)]
+pub struct ColoredMesh2d;
 
-    fn extract_component(item: bevy::ecs::query::QueryItem<Self::Query>) -> Self {
-        InstanceMaterialData(item.0.clone())
+/// Custom pipeline for 2d meshes with vertex colors
+pub struct ColoredMesh2dPipeline {
+    /// this pipeline wraps the standard [`Mesh2dPipeline`]
+    mesh2d_pipeline: Mesh2dPipeline,
+    shader: Handle<Shader>,
+}
+
+impl FromWorld for ColoredMesh2dPipeline {
+    fn from_world(world: &mut World) -> Self {
+        let asset_server = world.get_resource::<AssetServer>().unwrap();
+        asset_server.watch_for_changes().unwrap();
+        let shader: Handle<Shader> = asset_server.load("shaders/shader.wgsl");
+        Self {
+            mesh2d_pipeline: Mesh2dPipeline::from_world(world),
+            shader,
+        }
     }
 }
 
-pub struct CustomMaterialPlugin;
+// We implement `SpecializedPipeline` to customize the default rendering from `Mesh2dPipeline`
+impl SpecializedRenderPipeline for ColoredMesh2dPipeline {
+    type Key = Mesh2dPipelineKey;
 
-impl Plugin for CustomMaterialPlugin {
+    fn specialize(&self, key: Self::Key) -> RenderPipelineDescriptor {
+        // Customize how to store the meshes' vertex attributes in the vertex buffer
+        // Our meshes only have position and color
+        let formats = vec![
+            // Position
+            VertexFormat::Float32x3,
+            // Color
+            VertexFormat::Uint32,
+        ];
+
+        let vertex_layout =
+            VertexBufferLayout::from_vertex_formats(VertexStepMode::Vertex, formats);
+
+        RenderPipelineDescriptor {
+            vertex: VertexState {
+                // Use our custom shader
+                shader: self.shader.clone(),
+                entry_point: "vertex".into(),
+                shader_defs: Vec::new(),
+                // Use our custom vertex buffer
+                buffers: vec![vertex_layout],
+            },
+            fragment: Some(FragmentState {
+                // Use our custom shader
+                shader: self.shader.clone(),
+                shader_defs: Vec::new(),
+                entry_point: "fragment".into(),
+                targets: vec![ColorTargetState {
+                    format: TextureFormat::bevy_default(),
+                    blend: Some(BlendState::ALPHA_BLENDING),
+                    write_mask: ColorWrites::ALL,
+                }],
+            }),
+            // Use the two standard uniforms for 2d meshes
+            layout: Some(vec![
+                // Bind group 0 is the view uniform
+                self.mesh2d_pipeline.view_layout.clone(),
+                // Bind group 1 is the mesh uniform
+                self.mesh2d_pipeline.mesh_layout.clone(),
+            ]),
+            primitive: PrimitiveState {
+                front_face: FrontFace::Ccw,
+                cull_mode: Some(Face::Back),
+                unclipped_depth: false,
+                polygon_mode: PolygonMode::Fill,
+                conservative: false,
+                topology: key.primitive_topology(),
+                strip_index_format: None,
+            },
+            depth_stencil: None,
+            multisample: MultisampleState {
+                count: key.msaa_samples(),
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            label: Some("colored_mesh2d_pipeline".into()),
+        }
+    }
+}
+
+// This specifies how to render a colored 2d mesh
+type DrawColoredMesh2d = (
+    // Set the pipeline
+    SetItemPipeline,
+    // Set the view uniform as bind group 0
+    SetMesh2dViewBindGroup<0>,
+    // Set the mesh uniform as bind group 1
+    SetMesh2dBindGroup<1>,
+    // Draw the mesh
+    DrawMesh2d,
+);
+
+// The custom shader can be inline like here, included from another file at build time
+// using `include_str!()`, or loaded like any other asset with `asset_server.load()`.
+
+/// Plugin that renders [`ColoredMesh2d`]s
+pub struct ColoredMesh2dPlugin;
+
+/// Handle to the custom shader with a unique random ID
+pub const COLORED_MESH2D_SHADER_HANDLE: HandleUntyped =
+    HandleUntyped::weak_from_u64(Shader::TYPE_UUID, 13828845428412094821);
+
+impl Plugin for ColoredMesh2dPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugin(ExtractComponentPlugin::<InstanceMaterialData>::default());
-        app.sub_app_mut(RenderApp)
-            .add_render_command::<Transparent3d, DrawCustom>()
-            .init_resource::<CustomPipeline>()
-            .init_resource::<SpecializedMeshPipelines<CustomPipeline>>()
-            .add_system_to_stage(RenderStage::Queue, queue_custom)
-            .add_system_to_stage(RenderStage::Prepare, prepare_instance_buffers);
+        // Register our custom draw function and pipeline, and add our render systems
+        let render_app = app.get_sub_app_mut(RenderApp).unwrap();
+        render_app
+            .add_render_command::<Transparent2d, DrawColoredMesh2d>()
+            .init_resource::<ColoredMesh2dPipeline>()
+            .init_resource::<SpecializedRenderPipelines<ColoredMesh2dPipeline>>()
+            .add_system_to_stage(RenderStage::Extract, extract_colored_mesh2d)
+            .add_system_to_stage(RenderStage::Queue, queue_colored_mesh2d);
     }
 }
 
-#[derive(Clone, Copy, Pod, Zeroable)]
-#[repr(C)]
-struct InstanceData {
-    position: Vec3,
-    scale: f32,
-    color: [f32; 4],
+/// Extract the [`ColoredMesh2d`] marker component into the render app
+pub fn extract_colored_mesh2d(
+    mut commands: Commands,
+    mut previous_len: Local<usize>,
+    query: Query<(Entity, &ComputedVisibility), With<ColoredMesh2d>>,
+) {
+    let mut values = Vec::with_capacity(*previous_len);
+    for (entity, computed_visibility) in query.iter() {
+        if !computed_visibility.is_visible {
+            continue;
+        }
+        values.push((entity, (ColoredMesh2d,)));
+    }
+    *previous_len = values.len();
+    commands.insert_or_spawn_batch(values);
 }
 
+/// Queue the 2d meshes marked with [`ColoredMesh2d`] using our custom pipeline and draw function
 #[allow(clippy::too_many_arguments)]
-fn queue_custom(
-    transparent_3d_draw_functions: Res<DrawFunctions<Transparent3d>>,
-    custom_pipeline: Res<CustomPipeline>,
-    msaa: Res<Msaa>,
-    mut pipelines: ResMut<SpecializedMeshPipelines<CustomPipeline>>,
+pub fn queue_colored_mesh2d(
+    transparent_draw_functions: Res<DrawFunctions<Transparent2d>>,
+    colored_mesh2d_pipeline: Res<ColoredMesh2dPipeline>,
+    mut pipelines: ResMut<SpecializedRenderPipelines<ColoredMesh2dPipeline>>,
     mut pipeline_cache: ResMut<PipelineCache>,
-    meshes: Res<RenderAssets<Mesh>>,
-    material_meshes: Query<
-        (Entity, &MeshUniform, &Handle<Mesh>),
-        (With<Handle<Mesh>>, With<InstanceMaterialData>),
-    >,
-    mut views: Query<(&ExtractedView, &mut RenderPhase<Transparent3d>)>,
+    msaa: Res<Msaa>,
+    render_meshes: Res<RenderAssets<Mesh>>,
+    colored_mesh2d: Query<(&Mesh2dHandle, &Mesh2dUniform), With<ColoredMesh2d>>,
+    mut views: Query<(&VisibleEntities, &mut RenderPhase<Transparent2d>)>,
 ) {
-    let draw_custom = transparent_3d_draw_functions
-        .read()
-        .get_id::<DrawCustom>()
-        .unwrap();
+    if colored_mesh2d.is_empty() {
+        return;
+    }
+    // Iterate each view (a camera is a view)
+    for (visible_entities, mut transparent_phase) in views.iter_mut() {
+        let draw_colored_mesh2d = transparent_draw_functions
+            .read()
+            .get_id::<DrawColoredMesh2d>()
+            .unwrap();
 
-    let msaa_key = MeshPipelineKey::from_msaa_samples(msaa.samples);
+        let mesh_key = Mesh2dPipelineKey::from_msaa_samples(msaa.samples);
 
-    for (view, mut transparent_phase) in views.iter_mut() {
-        let view_matrix = view.transform.compute_matrix();
-        let view_row_2 = view_matrix.row(2);
-        for (entity, mesh_uniform, mesh_handle) in material_meshes.iter() {
-            if let Some(mesh) = meshes.get(mesh_handle) {
-                let key =
-                    msaa_key | MeshPipelineKey::from_primitive_topology(mesh.primitive_topology);
-                let pipeline = pipelines
-                    .specialize(&mut pipeline_cache, &custom_pipeline, key, &mesh.layout)
-                    .unwrap();
-                transparent_phase.add(Transparent3d {
-                    entity,
-                    pipeline,
-                    draw_function: draw_custom,
-                    distance: view_row_2.dot(mesh_uniform.transform.col(3)),
+        // Queue all entities visible to that view
+        for visible_entity in &visible_entities.entities {
+            if let Ok((mesh2d_handle, mesh2d_uniform)) = colored_mesh2d.get(*visible_entity) {
+                // Get our specialized pipeline
+                let mut mesh2d_key = mesh_key;
+                if let Some(mesh) = render_meshes.get(&mesh2d_handle.0) {
+                    mesh2d_key |=
+                        Mesh2dPipelineKey::from_primitive_topology(mesh.primitive_topology);
+                }
+
+                let pipeline_id =
+                    pipelines.specialize(&mut pipeline_cache, &colored_mesh2d_pipeline, mesh2d_key);
+
+                let mesh_z = mesh2d_uniform.transform.w_axis.z;
+                transparent_phase.add(Transparent2d {
+                    entity: *visible_entity,
+                    draw_function: draw_colored_mesh2d,
+                    pipeline: pipeline_id,
+                    // The 2d render items are sorted according to their z value before rendering,
+                    // in order to get correct transparency
+                    sort_key: FloatOrd(mesh_z),
+                    // This material is not batched
+                    batch_range: None,
                 });
             }
         }
-    }
-}
-
-#[derive(Component)]
-pub struct InstanceBuffer {
-    buffer: Buffer,
-    length: usize,
-}
-
-fn prepare_instance_buffers(
-    mut commands: Commands,
-    query: Query<(Entity, &InstanceMaterialData)>,
-    render_device: Res<RenderDevice>,
-) {
-    for (entity, instance_data) in query.iter() {
-        let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-            label: Some("instance data buffer"),
-            contents: bytemuck::cast_slice(instance_data.as_slice()),
-            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-        });
-        commands.entity(entity).insert(InstanceBuffer {
-            buffer,
-            length: instance_data.len(),
-        });
-    }
-}
-
-pub struct CustomPipeline {
-    shader: Handle<Shader>,
-    mesh_pipeline: MeshPipeline,
-}
-
-impl FromWorld for CustomPipeline {
-    fn from_world(world: &mut World) -> Self {
-        let world = world.cell();
-        let asset_server = world.get_resource::<AssetServer>().unwrap();
-        asset_server.watch_for_changes().unwrap();
-        let shader = asset_server.load("shaders/instancing.wgsl");
-
-        let mesh_pipeline = world.get_resource::<MeshPipeline>().unwrap();
-
-        CustomPipeline {
-            shader,
-            mesh_pipeline: mesh_pipeline.clone(),
-        }
-    }
-}
-
-impl SpecializedMeshPipeline for CustomPipeline {
-    type Key = MeshPipelineKey;
-
-    fn specialize(
-        &self,
-        key: Self::Key,
-        layout: &MeshVertexBufferLayout,
-    ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
-        let mut descriptor = self.mesh_pipeline.specialize(key, layout)?;
-        descriptor.vertex.shader = self.shader.clone();
-        descriptor.vertex.buffers.push(VertexBufferLayout {
-            array_stride: std::mem::size_of::<InstanceData>() as u64,
-            step_mode: VertexStepMode::Instance,
-            attributes: vec![
-                VertexAttribute {
-                    format: VertexFormat::Float32x4,
-                    offset: 0,
-                    shader_location: 3, // shader locations 0-2 are taken up by Position, Normal and UV attributes
-                },
-                VertexAttribute {
-                    format: VertexFormat::Float32x4,
-                    offset: VertexFormat::Float32x4.size(),
-                    shader_location: 4,
-                },
-            ],
-        });
-        descriptor.fragment.as_mut().unwrap().shader = self.shader.clone();
-        descriptor.layout = Some(vec![
-            self.mesh_pipeline.view_layout.clone(),
-            self.mesh_pipeline.mesh_layout.clone(),
-        ]);
-
-        Ok(descriptor)
-    }
-}
-
-type DrawCustom = (
-    SetItemPipeline,
-    SetMeshViewBindGroup<0>,
-    SetMeshBindGroup<1>,
-    DrawMeshInstanced,
-);
-
-pub struct DrawMeshInstanced;
-impl EntityRenderCommand for DrawMeshInstanced {
-    type Param = (
-        SRes<RenderAssets<Mesh>>,
-        SQuery<Read<Handle<Mesh>>>,
-        SQuery<Read<InstanceBuffer>>,
-    );
-    #[inline]
-    fn render<'w>(
-        _view: Entity,
-        item: Entity,
-        (meshes, mesh_query, instance_buffer_query): SystemParamItem<'w, '_, Self::Param>,
-        pass: &mut TrackedRenderPass<'w>,
-    ) -> RenderCommandResult {
-        let mesh_handle = mesh_query.get(item).unwrap();
-        let instance_buffer = instance_buffer_query.get_inner(item).unwrap();
-
-        let gpu_mesh = match meshes.into_inner().get(mesh_handle) {
-            Some(gpu_mesh) => gpu_mesh,
-            None => return RenderCommandResult::Failure,
-        };
-
-        pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
-        pass.set_vertex_buffer(1, instance_buffer.buffer.slice(..));
-
-        match &gpu_mesh.buffer_info {
-            GpuBufferInfo::Indexed {
-                buffer,
-                index_format,
-                count,
-            } => {
-                pass.set_index_buffer(buffer.slice(..), 0, *index_format);
-                pass.draw_indexed(0..*count, 0, 0..instance_buffer.length as u32);
-            }
-            GpuBufferInfo::NonIndexed { vertex_count } => {
-                pass.draw(0..*vertex_count, 0..instance_buffer.length as u32);
-            }
-        }
-        RenderCommandResult::Success
     }
 }
