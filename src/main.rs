@@ -36,7 +36,9 @@ use bevy::render::render_resource::SpecializedRenderPipelines;
 use bevy::render::render_resource::TextureAspect;
 use bevy::render::render_resource::TextureDimension;
 use bevy::render::render_resource::TextureFormat;
+use bevy::render::render_resource::TextureSampleType;
 use bevy::render::render_resource::TextureViewDescriptor;
+use bevy::render::render_resource::TextureViewDimension;
 use bevy::render::render_resource::VertexBufferLayout;
 use bevy::render::render_resource::VertexFormat;
 use bevy::render::render_resource::VertexState;
@@ -56,6 +58,7 @@ use bevy::sprite::Mesh2dPipelineKey;
 use bevy::sprite::Mesh2dUniform;
 use bevy::sprite::SetMesh2dBindGroup;
 use bevy::sprite::SetMesh2dViewBindGroup;
+use bevy::sprite::SetSpriteTextureBindGroup;
 
 /// This example shows how to manually render 2d items using "mid level render apis" with a custom pipeline for 2d meshes
 /// It doesn't use the [`Material2d`] abstraction, but changes the vertex buffer to include vertex color
@@ -91,6 +94,7 @@ pub struct ColoredMesh2d;
 pub struct ColoredMesh2dPipeline {
     pub view_layout: BindGroupLayout,
     pub mesh_layout: BindGroupLayout,
+    pub texture_layout: BindGroupLayout,
     pub texture: GpuImage,
     shader: Handle<Shader>,
 }
@@ -130,6 +134,20 @@ impl FromWorld for ColoredMesh2dPipeline {
                 count: None,
             }],
             label: Some("mesh2d_layout"),
+        });
+
+        let texture_layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            entries: &[BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::FRAGMENT,
+                ty: BindingType::Texture {
+                    sample_type: TextureSampleType::Float { filterable: false },
+                    view_dimension: TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            }],
+            label: None,
         });
         // A 1x1x1 'all 1.0' texture to use as a dummy texture to use in place of optional StandardMaterial textures
         let texture = {
@@ -179,6 +197,7 @@ impl FromWorld for ColoredMesh2dPipeline {
         };
         Self {
             view_layout,
+            texture_layout,
             mesh_layout,
             texture,
             shader,
@@ -229,6 +248,7 @@ impl SpecializedRenderPipeline for ColoredMesh2dPipeline {
                 self.view_layout.clone(),
                 // Bind group 1 is the mesh uniform
                 self.mesh_layout.clone(),
+                self.texture_layout.clone(),
             ]),
             primitive: PrimitiveState {
                 front_face: FrontFace::Ccw,
@@ -258,6 +278,8 @@ type DrawColoredMesh2d = (
     SetMesh2dViewBindGroup<0>,
     // Set the mesh uniform as bind group 1
     SetMesh2dBindGroup<1>,
+    // Set the texture lolol i dont know what i am doing at all
+    SetSpriteTextureBindGroup<2>,
     // Draw the mesh
     DrawMesh2d,
 );
