@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.7.0", default-features = false, features = ["render", "x11", "png", "bevy_winit", "serialize", "filesystem_watcher", "dynamic"]}
+bevy_mod_debugdump = "0.4.0"
 bytemuck = "1.11.0"

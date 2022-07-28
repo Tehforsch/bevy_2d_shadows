@@ -318,21 +318,17 @@ fn setup(
     *remember_light_map = RememberLightMap(Some(light_map_handle.clone()));
 
     let cube_handle = meshes.add(Mesh::from(shape::Cube { size: 4.0 }));
-    let cube_material_handle = materials.add(StandardMaterial {
-        base_color: Color::rgb(0.8, 0.7, 0.6),
-        reflectance: 0.02,
-        unlit: false,
-        ..default()
-    });
 
     // This specifies the layer used for the first pass, which will be attached to the first pass camera and cube.
     let first_pass_layer = RenderLayers::layer(1);
+
+    let mat = materials.add(StandardMaterial::default());
 
     // The cube that will be rendered to the texture.
     commands
         .spawn_bundle(PbrBundle {
             mesh: cube_handle,
-            material: cube_material_handle,
+            material: mat,
             transform: Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)),
             ..default()
         })
@@ -418,6 +414,7 @@ fn main() {
     graph
         .add_node_edge(FIRST_PASS_DRIVER, node::MAIN_PASS_DRIVER)
         .unwrap();
+    // bevy_mod_debugdump::print_render_graph(&mut app);
     app.run();
 }
 
