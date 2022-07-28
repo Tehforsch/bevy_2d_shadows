@@ -20,9 +20,14 @@ use bevy::render::render_resource::BufferBindingType;
 use bevy::render::render_resource::BufferInitDescriptor;
 use bevy::render::render_resource::BufferSize;
 use bevy::render::render_resource::BufferUsages;
+use bevy::render::render_resource::Extent3d;
 use bevy::render::render_resource::SamplerBindingType;
 use bevy::render::render_resource::ShaderStages;
+use bevy::render::render_resource::TextureDescriptor;
+use bevy::render::render_resource::TextureDimension;
+use bevy::render::render_resource::TextureFormat;
 use bevy::render::render_resource::TextureSampleType;
+use bevy::render::render_resource::TextureUsages;
 use bevy::render::render_resource::TextureViewDimension;
 use bevy::render::renderer::RenderDevice;
 use bevy::sprite::Material2d;
@@ -40,14 +45,16 @@ pub struct MyData {
 #[uuid = "106b9f9a-bf10-11ec-9d64-0242ac120002"]
 pub struct MyMaterial {
     pub texture: Handle<Image>,
+    pub light_map: Handle<Image>,
     pub shader_data: MyData,
 }
 
-impl From<Handle<Image>> for MyMaterial {
-    fn from(texture: Handle<Image>) -> Self {
+impl MyMaterial {
+    fn new(texture: Handle<Image>, light_map: Handle<Image>) -> Self {
         let shader_data = MyData { x: 0.0 };
         Self {
             texture,
+            light_map,
             shader_data,
         }
     }
@@ -78,6 +85,10 @@ impl RenderAsset for MyMaterial {
             Some(gpu_image) => gpu_image,
             None => return Err(PrepareAssetError::RetryNextUpdate(extracted_asset)),
         };
+        // let light_map = match gpu_images.get(&extracted_asset.light_map) {
+        //     Some(gpu_image) => gpu_image,
+        //     None => return Err(PrepareAssetError::RetryNextUpdate(extracted_asset)),
+        // };
 
         let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
             contents: extracted_asset.shader_data.as_std140().as_bytes(),
@@ -94,7 +105,16 @@ impl RenderAsset for MyMaterial {
                     binding: 1,
                     resource: BindingResource::Sampler(&gpu_image.sampler),
                 },
+                // BindGroupEntry {
+                //     binding: 2,
+                //     resource: BindingResource::TextureView(&light_map.texture_view),
+                // },
+                // BindGroupEntry {
+                //     binding: 3,
+                //     resource: BindingResource::Sampler(&light_map.sampler),
+                // },
                 BindGroupEntry {
+                    // binding: 4,
                     binding: 2,
                     resource: buffer.as_entire_binding(),
                 },
@@ -139,7 +159,24 @@ impl Material2d for MyMaterial {
                     ty: BindingType::Sampler(SamplerBindingType::Filtering),
                     count: None,
                 },
+                // BindGroupLayoutEntry {
+                //     binding: 2,
+                //     visibility: ShaderStages::FRAGMENT,
+                //     ty: BindingType::Texture {
+                //         sample_type: TextureSampleType::Float { filterable: true },
+                //         view_dimension: TextureViewDimension::D2,
+                //         multisampled: false,
+                //     },
+                //     count: None,
+                // },
+                // BindGroupLayoutEntry {
+                //     binding: 3,
+                //     visibility: ShaderStages::FRAGMENT,
+                //     ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                //     count: None,
+                // },
                 BindGroupLayoutEntry {
+                    // binding: 4,
                     binding: 2,
                     visibility: ShaderStages::VERTEX_FRAGMENT,
                     ty: BindingType::Buffer {
@@ -160,14 +197,38 @@ fn setup(
     mut custom_materials: ResMut<Assets<MyMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     asset_server: Res<AssetServer>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     let mesh = Mesh::from(Quad::new(Vec2::new(600.0, 400.0)));
+    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
+
+    let size = Extent3d {
+        width: 512,
+        height: 512,
+        ..default()
+    };
+    let light_map = Image {
+        texture_descriptor: TextureDescriptor {
+            label: None,
+            size,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Bgra8UnormSrgb,
+            mip_level_count: 1,
+            sample_count: 1,
+            usage: TextureUsages::TEXTURE_BINDING
+                | TextureUsages::COPY_DST
+                | TextureUsages::RENDER_ATTACHMENT,
+        },
+        ..default()
+    };
+
+    let image_handle = images.add(light_map);
     commands.spawn_bundle(MaterialMesh2dBundle {
         mesh: Mesh2dHandle(meshes.add(mesh)),
-        material: custom_materials.add(MyMaterial::from(asset_server.load("tree.png"))),
+        material: custom_materials
+            .add(MyMaterial::new(asset_server.load("tree.png"), image_handle)),
         ..default()
     });
-    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
 }
 
 fn main() {
