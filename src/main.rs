@@ -210,7 +210,7 @@ fn setup(
             label: None,
             size,
             dimension: TextureDimension::D2,
-            format: TextureFormat::Bgra8UnormSrgb,
+            format: TextureFormat::R8Unorm,
             mip_level_count: 1,
             sample_count: 1,
             usage: TextureUsages::TEXTURE_BINDING
@@ -222,18 +222,15 @@ fn setup(
 
     light_map.resize(size);
 
-    for (i, v) in light_map.data.chunks_exact_mut(4).enumerate() {
+    for (i, v) in light_map.data.iter_mut().enumerate() {
         let y = i / 512;
         let x = i.rem_euclid(512);
         let dist = ((x as f32 - 250.0).powi(2) + (y as f32 - 200.0).powi(2)).sqrt();
         let val = match dist < 100.0 {
             true => 1.0,
-            false => (-(dist - 100.0) * 0.005).exp(),
+            false => (-(dist - 100.0) * 0.009).exp(),
         };
-        // v[0] = (val * 255.0) as u8;
-        // v[1] = (val * 255.0) as u8;
-        v[2] = (val * 255.0) as u8;
-        // v[3] = (val * 255.0) as u8;
+        *v = (val * 255.0) as u8;
     }
 
     let light_map_handle = images.add(light_map);
