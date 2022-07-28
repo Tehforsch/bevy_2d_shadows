@@ -1,39 +1,57 @@
 use bevy::core::FloatOrd;
 use bevy::core_pipeline::Transparent2d;
+use bevy::prelude::shape::Quad;
 use bevy::prelude::*;
 use bevy::reflect::TypeUuid;
-use bevy::render::mesh::Indices;
 use bevy::render::render_asset::RenderAssets;
 use bevy::render::render_phase::AddRenderCommand;
 use bevy::render::render_phase::DrawFunctions;
 use bevy::render::render_phase::RenderPhase;
 use bevy::render::render_phase::SetItemPipeline;
+use bevy::render::render_resource::std140::AsStd140;
+use bevy::render::render_resource::BindGroupLayout;
+use bevy::render::render_resource::BindGroupLayoutDescriptor;
+use bevy::render::render_resource::BindGroupLayoutEntry;
+use bevy::render::render_resource::BindingType;
 use bevy::render::render_resource::BlendState;
+use bevy::render::render_resource::BufferBindingType;
+use bevy::render::render_resource::BufferSize;
 use bevy::render::render_resource::ColorTargetState;
 use bevy::render::render_resource::ColorWrites;
+use bevy::render::render_resource::Extent3d;
 use bevy::render::render_resource::Face;
 use bevy::render::render_resource::FragmentState;
 use bevy::render::render_resource::FrontFace;
+use bevy::render::render_resource::ImageCopyTexture;
+use bevy::render::render_resource::ImageDataLayout;
 use bevy::render::render_resource::MultisampleState;
+use bevy::render::render_resource::Origin3d;
 use bevy::render::render_resource::PipelineCache;
 use bevy::render::render_resource::PolygonMode;
 use bevy::render::render_resource::PrimitiveState;
-use bevy::render::render_resource::PrimitiveTopology;
 use bevy::render::render_resource::RenderPipelineDescriptor;
+use bevy::render::render_resource::ShaderStages;
 use bevy::render::render_resource::SpecializedRenderPipeline;
 use bevy::render::render_resource::SpecializedRenderPipelines;
+use bevy::render::render_resource::TextureAspect;
+use bevy::render::render_resource::TextureDimension;
 use bevy::render::render_resource::TextureFormat;
+use bevy::render::render_resource::TextureViewDescriptor;
 use bevy::render::render_resource::VertexBufferLayout;
 use bevy::render::render_resource::VertexFormat;
 use bevy::render::render_resource::VertexState;
 use bevy::render::render_resource::VertexStepMode;
+use bevy::render::renderer::RenderDevice;
+use bevy::render::renderer::RenderQueue;
 use bevy::render::texture::BevyDefault;
+use bevy::render::texture::GpuImage;
+use bevy::render::texture::TextureFormatPixelInfo;
+use bevy::render::view::ViewUniform;
 use bevy::render::view::VisibleEntities;
 use bevy::render::RenderApp;
 use bevy::render::RenderStage;
 use bevy::sprite::DrawMesh2d;
 use bevy::sprite::Mesh2dHandle;
-use bevy::sprite::Mesh2dPipeline;
 use bevy::sprite::Mesh2dPipelineKey;
 use bevy::sprite::Mesh2dUniform;
 use bevy::sprite::SetMesh2dBindGroup;
@@ -46,80 +64,23 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugin(ColoredMesh2dPlugin)
-        .add_startup_system(star)
+        .add_startup_system(setup)
         .run();
 }
 
-fn star(
-    mut commands: Commands,
-    // We will add a new Mesh for the star being created
-    mut meshes: ResMut<Assets<Mesh>>,
-) {
-    // Let's define the mesh for the object we want to draw: a nice star.
-    // We will specify here what kind of topology is used to define the mesh,
-    // that is, how triangles are built from the vertices. We will use a
-    // triangle list, meaning that each vertex of the triangle has to be
-    // specified.
-    let mut star = Mesh::new(PrimitiveTopology::TriangleList);
-
-    // Vertices need to have a position attribute. We will use the following
-    // vertices (I hope you can spot the star in the schema).
-    //
-    //        1
-    //
-    //     10   2
-    // 9      0      3
-    //     8     4
-    //        6
-    //   7        5
-    //
-    // These vertices are specificed in 3D space.
-    let mut v_pos = vec![[0.0, 0.0, 0.0]];
-    for i in 0..10 {
-        // Angle of each vertex is 1/10 of TAU, plus PI/2 for positioning vertex 0
-        let a = std::f32::consts::FRAC_PI_2 - i as f32 * std::f32::consts::TAU / 10.0;
-        // Radius of internal vertices (2, 4, 6, 8, 10) is 100, it's 200 for external
-        let r = (1 - i % 2) as f32 * 100.0 + 100.0;
-        // Add the vertex coordinates
-        v_pos.push([r * a.cos(), r * a.sin(), 0.0]);
-    }
-    // Set the position attribute
-    star.insert_attribute(Mesh::ATTRIBUTE_POSITION, v_pos);
-    // And a RGB color attribute as well
-    let mut v_color: Vec<u32> = vec![Color::BLACK.as_linear_rgba_u32()];
-    v_color.extend_from_slice(&[Color::YELLOW.as_linear_rgba_u32(); 10]);
-    star.insert_attribute(Mesh::ATTRIBUTE_COLOR, v_color);
-
-    // Now, we specify the indices of the vertex that are going to compose the
-    // triangles in our star. Vertices in triangles have to be specified in CCW
-    // winding (that will be the front face, colored). Since we are using
-    // triangle list, we will specify each triangle as 3 vertices
-    //   First triangle: 0, 2, 1
-    //   Second triangle: 0, 3, 2
-    //   Third triangle: 0, 4, 3
-    //   etc
-    //   Last triangle: 0, 1, 10
-    let mut indices = vec![0, 1, 10];
-    for i in 2..=10 {
-        indices.extend_from_slice(&[0, i, i - 1]);
-    }
-    star.set_indices(Some(Indices::U32(indices)));
-
-    // We can now spawn the entities for the star and the camera
+fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
+    let cube = Quad::new(Vec2::new(100.0, 100.0)).into();
     commands.spawn_bundle((
-        // We use a marker component to identify the custom colored meshes
         ColoredMesh2d::default(),
         // The `Handle<Mesh>` needs to be wrapped in a `Mesh2dHandle` to use 2d rendering instead of 3d
-        Mesh2dHandle(meshes.add(star)),
+        Mesh2dHandle(meshes.add(cube)),
         // These other components are needed for 2d meshes to be rendered
         Transform::default(),
         GlobalTransform::default(),
         Visibility::default(),
         ComputedVisibility::default(),
     ));
-    commands
-        // And use an orthographic projection
-        .spawn_bundle(OrthographicCameraBundle::new_2d());
+    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
 }
 
 /// A marker component for colored 2d meshes
@@ -128,8 +89,9 @@ pub struct ColoredMesh2d;
 
 /// Custom pipeline for 2d meshes with vertex colors
 pub struct ColoredMesh2dPipeline {
-    /// this pipeline wraps the standard [`Mesh2dPipeline`]
-    mesh2d_pipeline: Mesh2dPipeline,
+    pub view_layout: BindGroupLayout,
+    pub mesh_layout: BindGroupLayout,
+    pub texture: GpuImage,
     shader: Handle<Shader>,
 }
 
@@ -138,8 +100,87 @@ impl FromWorld for ColoredMesh2dPipeline {
         let asset_server = world.get_resource::<AssetServer>().unwrap();
         asset_server.watch_for_changes().unwrap();
         let shader: Handle<Shader> = asset_server.load("shaders/shader.wgsl");
+        let render_device = world.resource::<RenderDevice>();
+        let view_layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            entries: &[
+                // View
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: BufferSize::new(ViewUniform::std140_size_static() as u64),
+                    },
+                    count: None,
+                },
+            ],
+            label: Some("mesh2d_view_layout"),
+        });
+
+        let mesh_layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            entries: &[BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Uniform,
+                    has_dynamic_offset: true,
+                    min_binding_size: BufferSize::new(Mesh2dUniform::std140_size_static() as u64),
+                },
+                count: None,
+            }],
+            label: Some("mesh2d_layout"),
+        });
+        // A 1x1x1 'all 1.0' texture to use as a dummy texture to use in place of optional StandardMaterial textures
+        let texture = {
+            let image = Image::new_fill(
+                Extent3d::default(),
+                TextureDimension::D2,
+                &[255u8; 4],
+                TextureFormat::bevy_default(),
+            );
+            let texture = render_device.create_texture(&image.texture_descriptor);
+            let sampler = render_device.create_sampler(&image.sampler_descriptor);
+
+            let format_size = image.texture_descriptor.format.pixel_size();
+            let render_queue = world.resource_mut::<RenderQueue>();
+            render_queue.write_texture(
+                ImageCopyTexture {
+                    texture: &texture,
+                    mip_level: 0,
+                    origin: Origin3d::ZERO,
+                    aspect: TextureAspect::All,
+                },
+                &image.data,
+                ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(
+                        std::num::NonZeroU32::new(
+                            image.texture_descriptor.size.width * format_size as u32,
+                        )
+                        .unwrap(),
+                    ),
+                    rows_per_image: None,
+                },
+                image.texture_descriptor.size,
+            );
+
+            let texture_view = texture.create_view(&TextureViewDescriptor::default());
+            GpuImage {
+                texture,
+                texture_view,
+                texture_format: image.texture_descriptor.format,
+                sampler,
+                size: Size::new(
+                    image.texture_descriptor.size.width as f32,
+                    image.texture_descriptor.size.height as f32,
+                ),
+            }
+        };
         Self {
-            mesh2d_pipeline: Mesh2dPipeline::from_world(world),
+            view_layout,
+            mesh_layout,
+            texture,
             shader,
         }
     }
@@ -185,9 +226,9 @@ impl SpecializedRenderPipeline for ColoredMesh2dPipeline {
             // Use the two standard uniforms for 2d meshes
             layout: Some(vec![
                 // Bind group 0 is the view uniform
-                self.mesh2d_pipeline.view_layout.clone(),
+                self.view_layout.clone(),
                 // Bind group 1 is the mesh uniform
-                self.mesh2d_pipeline.mesh_layout.clone(),
+                self.mesh_layout.clone(),
             ]),
             primitive: PrimitiveState {
                 front_face: FrontFace::Ccw,
