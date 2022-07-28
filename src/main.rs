@@ -1,11 +1,10 @@
 use bevy::core_pipeline::draw_2d_graph;
-use bevy::core_pipeline::draw_3d_graph;
 use bevy::core_pipeline::node;
-use bevy::core_pipeline::AlphaMask3d;
-use bevy::core_pipeline::Opaque3d;
 use bevy::core_pipeline::RenderTargetClearColors;
 use bevy::core_pipeline::Transparent2d;
-use bevy::core_pipeline::Transparent3d;
+use bevy::diagnostic::DiagnosticsPlugin;
+use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
+use bevy::diagnostic::LogDiagnosticsPlugin;
 use bevy::ecs::system::lifetimeless::SRes;
 use bevy::ecs::system::SystemParamItem;
 use bevy::prelude::shape::Quad;
@@ -60,6 +59,11 @@ use bevy::sprite::Material2dPipeline;
 use bevy::sprite::Material2dPlugin;
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::sprite::Mesh2dHandle;
+use bevy::window::PresentMode;
+use mouse_position::track_mouse_world_position_system;
+use mouse_position::MousePosition;
+
+mod mouse_position;
 
 // The name of the final node of the first pass.
 pub const FIRST_PASS_DRIVER: &str = "first_pass_driver";
@@ -92,6 +96,9 @@ impl MyMaterial {
 pub struct MyGpuMaterial {
     bind_group: BindGroup,
 }
+
+#[derive(Component)]
+pub struct WorldCamera;
 
 impl RenderAsset for MyMaterial {
     type ExtractedAsset = MyMaterial;
@@ -263,13 +270,17 @@ fn setup(
     asset_server: Res<AssetServer>,
     mut images: ResMut<Assets<Image>>,
     mut clear_colors: ResMut<RenderTargetClearColors>,
+    mut windows: ResMut<Windows>,
 ) {
     asset_server.watch_for_changes().unwrap();
-    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
-
+    commands
+        .spawn_bundle(OrthographicCameraBundle::new_2d())
+        .insert(WorldCamera);
+    let window = windows.get_primary_mut().unwrap();
+    println!("Window size was: {},{}", window.width(), window.height());
     let size = Extent3d {
-        width: 512,
-        height: 512,
+        width: window.width() as u32,
+        height: window.height() as u32,
         ..default()
     };
     let mut light_map = Image {
@@ -286,23 +297,7 @@ fn setup(
         },
         ..default()
     };
-
     light_map.resize(size);
-
-    for (i, v) in light_map.data.chunks_exact_mut(4).enumerate() {
-        let y = i / 512;
-        let x = i.rem_euclid(512);
-        let dist = ((x as f32 - 250.0).powi(2) + (y as f32 - 200.0).powi(2)).sqrt();
-        let val = match dist < 100.0 {
-            true => 1.0,
-            false => (-(dist - 100.0) * 0.009).exp(),
-        };
-        v[0] = (val * 255.0) as u8;
-        v[1] = (val * 255.0) as u8;
-        v[2] = (val * 255.0) as u8;
-        v[3] = (val * 255.0) as u8;
-    }
-
     let light_map_handle = images.add(light_map);
 
     let mesh = meshes.add(Mesh::from(Quad::new(Vec2::new(100.0, 100.0))));
@@ -327,7 +322,7 @@ fn setup(
 
     // First pass camera
     let render_target = RenderTarget::Image(light_map_handle.clone());
-    clear_colors.insert(render_target.clone(), Color::BLACK);
+    clear_colors.insert(render_target.clone(), Color::rgb(0.7, 0.7, 0.7));
     commands
         .spawn_bundle(new_2d(light_map_handle.clone()))
         .insert(first_pass_layer);
@@ -346,15 +341,23 @@ fn setup(
     // So either render layers must be used to avoid this, or the texture must be double buffered.
 
     // second pass stuff
-    let mesh = Mesh::from(Quad::new(Vec2::new(600.0, 400.0)));
-    commands.spawn_bundle(MaterialMesh2dBundle {
-        mesh: Mesh2dHandle(meshes.add(mesh)),
-        material: custom_materials.add(MyMaterial::new(
-            asset_server.load("tree.png"),
-            light_map_handle,
-        )),
-        ..default()
-    });
+    for i in -10i32..10i32 {
+        for j in -10i32..10i32 {
+            let mesh = Mesh::from(Quad::new(Vec2::new(50.0, 50.0)));
+            commands.spawn_bundle(MaterialMesh2dBundle {
+                mesh: Mesh2dHandle(meshes.add(mesh)),
+                material: custom_materials.add(MyMaterial::new(
+                    asset_server.load("tree.png"),
+                    light_map_handle.clone(),
+                )),
+                transform: Transform {
+                    translation: Vec3::new(60.0 * i as f32, 60.0 * j as f32, 0.0),
+                    ..default()
+                },
+                ..default()
+            });
+        }
+    }
 }
 
 fn main() {
@@ -363,6 +366,17 @@ fn main() {
         .add_plugin(Material2dPlugin::<MyMaterial>::default())
         .add_plugin(CameraTypePlugin::<FirstPassCamera>::default())
         .add_system(move_light_system)
+        .add_system(track_mouse_world_position_system)
+        .add_plugin(FrameTimeDiagnosticsPlugin)
+        .insert_resource(WindowDescriptor {
+            title: "I am a window!".to_string(),
+            width: 500.,
+            height: 300.,
+            present_mode: PresentMode::Immediate,
+            ..default()
+        })
+        .add_plugin(LogDiagnosticsPlugin::default())
+        .insert_resource(MousePosition::default())
         .add_startup_system(setup);
 
     let render_app = app.sub_app_mut(RenderApp);
@@ -437,8 +451,12 @@ impl Node for FirstPassCameraDriver {
 #[derive(Component)]
 struct FirstPassCube;
 
-fn move_light_system(time: Res<Time>, mut query: Query<&mut Transform, With<FirstPassCube>>) {
+fn move_light_system(
+    mouse_pos: Res<MousePosition>,
+    mut query: Query<&mut Transform, With<FirstPassCube>>,
+) {
     for mut transform in query.iter_mut() {
-        transform.translation += Vec3::new(1.0, 0.0, 0.0);
+        transform.translation.x = mouse_pos.world.x;
+        transform.translation.y = mouse_pos.world.y;
     }
 }
