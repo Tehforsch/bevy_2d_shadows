@@ -28,16 +28,20 @@ use bevy::sprite::Material2dPlugin;
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::sprite::Mesh2dHandle;
 use bevy::window::PresentMode;
+use light::move_light_system;
+use light::setup_lights_system;
 use light_pass::LightPassCamera;
+use light_pass::ShadowMap;
 use light_pass::LIGHT_PASS_DRIVER;
 use light_pass::LIGHT_PASS_LAYER;
 use mouse_position::track_mouse_world_position_system;
 use mouse_position::MousePosition;
 use shadow_material::ShadowMaterial;
-use world_camera::setup_camera;
+use world_camera::setup_camera_system;
 
 use crate::light_pass::new_light_camera;
 
+mod light;
 mod light_pass;
 mod mouse_position;
 mod shadow_material;
@@ -68,61 +72,31 @@ fn get_shadow_map(window: &Window) -> Image {
     shadow_map
 }
 
-fn setup_lights(
+fn setup_shadow_pass_system(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
-    let mesh = meshes.add(Mesh::from(Quad::new(Vec2::new(300.0, 300.0))));
-
-    let mat = materials.add(ColorMaterial {
-        color: Color::WHITE,
-        ..Default::default()
-    });
-
-    // The cube that will be rendered to the texture.
-    commands
-        .spawn_bundle(ColorMesh2dBundle {
-            mesh: Mesh2dHandle(mesh),
-            material: mat,
-            ..default()
-        })
-        .insert(FirstPassCube)
-        .insert(LIGHT_PASS_LAYER);
-}
-
-fn setup_shadow_pass(
-    mut commands: Commands,
-    mut custom_materials: ResMut<Assets<ShadowMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    asset_server: Res<AssetServer>,
     mut images: ResMut<Assets<Image>>,
     mut clear_colors: ResMut<RenderTargetClearColors>,
     mut windows: ResMut<Windows>,
+    mut shadow_map: ResMut<ShadowMap>,
 ) {
     let window = windows.get_primary_mut().unwrap();
     let shadow_map_handle = images.add(get_shadow_map(window));
+    *shadow_map = ShadowMap(Some(shadow_map_handle.clone()));
 
     let render_target = RenderTarget::Image(shadow_map_handle.clone());
     clear_colors.insert(render_target.clone(), Color::rgb(0.7, 0.7, 0.7));
     commands
-        .spawn_bundle(new_light_camera(shadow_map_handle.clone()))
+        .spawn_bundle(new_light_camera(shadow_map_handle))
         .insert(LIGHT_PASS_LAYER);
-    // NOTE: omitting the RenderLayers component for this camera may cause a validation error:
-    //
-    // thread 'main' panicked at 'wgpu error: Validation Error
-    //
-    //    Caused by:
-    //        In a RenderPass
-    //          note: encoder = `<CommandBuffer-(0, 1, Metal)>`
-    //        In a pass parameter
-    //          note: command buffer = `<CommandBuffer-(0, 1, Metal)>`
-    //        Attempted to use texture (5, 1, Metal) mips 0..1 layers 0..1 as a combination of COLOR_TARGET within a usage scope.
-    //
-    // This happens because the texture would be written and read in the same frame, which is not allowed.
-    // So either render layers must be used to avoid this, or the texture must be double buffered.
+}
 
-    // second pass stuff
+fn spawn_objects_system(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut custom_materials: ResMut<Assets<ShadowMaterial>>,
+    asset_server: Res<AssetServer>,
+    shadow_map: Res<ShadowMap>,
+) {
     for i in -5..5i32 {
         for j in -5..5i32 {
             let mesh = Mesh::from(Quad::new(Vec2::new(150.0, 150.0)));
@@ -130,7 +104,7 @@ fn setup_shadow_pass(
                 mesh: Mesh2dHandle(meshes.add(mesh)),
                 material: custom_materials.add(ShadowMaterial::new(
                     asset_server.load("tree.png"),
-                    shadow_map_handle.clone(),
+                    shadow_map.0.clone().unwrap(),
                 )),
                 transform: Transform {
                     translation: Vec3::new(160.0 * i as f32, 160.0 * j as f32, 0.0),
@@ -152,9 +126,11 @@ fn main() {
     .add_plugins(DefaultPlugins)
     .add_plugin(Material2dPlugin::<ShadowMaterial>::default())
     .add_plugin(CameraTypePlugin::<LightPassCamera>::default())
+    .insert_resource(ShadowMap(None))
     .add_system(move_light_system)
+    .add_startup_system(spawn_objects_system.after(setup_shadow_pass_system))
     .add_system(track_mouse_world_position_system)
-    .add_startup_system(setup_camera)
+    .add_startup_system(setup_camera_system)
     .add_plugin(FrameTimeDiagnosticsPlugin)
     .insert_resource(WindowDescriptor {
         present_mode: PresentMode::Immediate,
@@ -162,8 +138,8 @@ fn main() {
     })
     .add_plugin(LogDiagnosticsPlugin::default())
     .insert_resource(MousePosition::default())
-    .add_startup_system(setup_lights)
-    .add_startup_system(setup_shadow_pass);
+    .add_startup_system(setup_lights_system)
+    .add_startup_system(setup_shadow_pass_system);
 
     let render_app = app.sub_app_mut(RenderApp);
     let driver = FirstPassCameraDriver::new(&mut render_app.world);
@@ -230,19 +206,5 @@ impl Node for FirstPassCameraDriver {
             graph.run_sub_graph(draw_2d_graph::NAME, vec![SlotValue::Entity(camera)])?;
         }
         Ok(())
-    }
-}
-
-// Marks the first pass cube (rendered to a texture.)
-#[derive(Component)]
-struct FirstPassCube;
-
-fn move_light_system(
-    mouse_pos: Res<MousePosition>,
-    mut query: Query<&mut Transform, With<FirstPassCube>>,
-) {
-    for mut transform in query.iter_mut() {
-        transform.translation.x = mouse_pos.world.x;
-        transform.translation.y = mouse_pos.world.y;
     }
 }
