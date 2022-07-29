@@ -29,24 +29,31 @@ impl ShadowCaster {
     }
 }
 
-fn adjust_shadow_mesh() {}
-
 pub fn spawn_shadows_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     lights: Query<(Entity, &Transform, &Light)>,
     mut shadow_casters: Query<(&mut ShadowCaster, &Mesh2dHandle, &Transform)>,
-    _shadows: Query<&Shadow>,
+    shadows: Query<&Mesh2dHandle, With<Shadow>>,
 ) {
     for (mut shadow_caster, shadow_caster_mesh_handle, shadow_caster_transform) in
         shadow_casters.iter_mut()
     {
         for (light_entity, light_transform, _) in lights.iter() {
+            let light_pos = light_transform.translation.xy();
             match shadow_caster.shadows.get(&light_entity) {
-                Some(_shadow) => adjust_shadow_mesh(),
+                Some(shadow_entity) => {
+                    let shadow_mesh_handle = shadows.get(shadow_entity.clone()).unwrap();
+                    adjust_shadow_mesh(
+                        &mut meshes,
+                        light_pos,
+                        shadow_caster_mesh_handle,
+                        shadow_caster_transform,
+                        shadow_mesh_handle,
+                    );
+                }
                 None => {
-                    let light_pos = light_transform.translation.xy();
                     let shadow_caster_mesh: &Mesh =
                         meshes.get(shadow_caster_mesh_handle.0.clone()).unwrap();
                     let shadow_mesh =
@@ -64,12 +71,26 @@ pub fn spawn_shadows_system(
                             ..default()
                         })
                         .insert(LIGHT_PASS_LAYER)
+                        .insert(Shadow)
                         .id();
                     shadow_caster.shadows.insert(light_entity, entity);
                 }
             }
         }
     }
+}
+
+fn adjust_shadow_mesh(
+    meshes: &mut Assets<Mesh>,
+    light_pos: Vec2,
+    shadow_caster_mesh_handle: &Mesh2dHandle,
+    shadow_caster_transform: &Transform,
+    shadow_mesh_handle: &Mesh2dHandle,
+) {
+    let shadow_caster_mesh = meshes.get(shadow_caster_mesh_handle.0.clone()).unwrap();
+    let new_mesh = get_shadow_mesh(light_pos, shadow_caster_mesh, shadow_caster_transform);
+    let shadow_mesh = meshes.get_mut(shadow_mesh_handle.0.clone()).unwrap();
+    *shadow_mesh = new_mesh;
 }
 
 fn get_shadow_mesh(
