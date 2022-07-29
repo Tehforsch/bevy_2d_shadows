@@ -12,8 +12,8 @@ pub fn move_light_system(
     mouse_pos: Res<MousePosition>,
     mut query: Query<&mut Transform, With<Light>>,
 ) {
-    for mut transform in query.iter_mut() {
-        transform.translation.x = mouse_pos.world.x;
+    for (i, mut transform) in query.iter_mut().enumerate() {
+        transform.translation.x = mouse_pos.world.x + 500.0 * i as f32 - 500.0;
         transform.translation.y = mouse_pos.world.y;
     }
 }
@@ -25,17 +25,19 @@ pub fn setup_lights_system(
 ) {
     let mesh = meshes.add(Mesh::from(Quad::new(Vec2::new(300.0, 300.0))));
 
-    let mat = materials.add(ColorMaterial {
-        color: Color::WHITE,
-        ..Default::default()
-    });
+    for color in [Color::WHITE, Color::RED, Color::BLUE] {
+        let mat = materials.add(ColorMaterial {
+            color,
+            ..Default::default()
+        });
 
-    commands
-        .spawn_bundle(ColorMesh2dBundle {
-            mesh: Mesh2dHandle(mesh),
-            material: mat,
-            ..default()
-        })
-        .insert(Light)
-        .insert(LIGHT_PASS_LAYER);
+        commands
+            .spawn_bundle(ColorMesh2dBundle {
+                mesh: Mesh2dHandle(mesh.clone()),
+                material: mat.clone(),
+                ..default()
+            })
+            .insert(Light)
+            .insert(LIGHT_PASS_LAYER);
+    }
 }
