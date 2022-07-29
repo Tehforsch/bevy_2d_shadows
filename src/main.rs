@@ -63,14 +63,17 @@ pub const FIRST_PASS_DRIVER: &str = "first_pass_driver";
 
 #[derive(Debug, Clone, TypeUuid)]
 #[uuid = "106b9f9a-bf10-11ec-9d64-0242ac120002"]
-pub struct MyMaterial {
+pub struct ShadowMaterial {
     pub texture: Handle<Image>,
-    pub light_map: Handle<Image>,
+    pub shadow_map: Handle<Image>,
 }
 
-impl MyMaterial {
-    fn new(texture: Handle<Image>, light_map: Handle<Image>) -> Self {
-        Self { texture, light_map }
+impl ShadowMaterial {
+    fn new(texture: Handle<Image>, shadow_map: Handle<Image>) -> Self {
+        Self {
+            texture,
+            shadow_map,
+        }
     }
 }
 
@@ -82,8 +85,8 @@ pub struct MyGpuMaterial {
 #[derive(Component)]
 pub struct WorldCamera;
 
-impl RenderAsset for MyMaterial {
-    type ExtractedAsset = MyMaterial;
+impl RenderAsset for ShadowMaterial {
+    type ExtractedAsset = ShadowMaterial;
     type PreparedAsset = MyGpuMaterial;
     type Param = (
         SRes<RenderDevice>,
@@ -102,7 +105,7 @@ impl RenderAsset for MyMaterial {
             Some(gpu_image) => gpu_image,
             None => return Err(PrepareAssetError::RetryNextUpdate(extracted_asset)),
         };
-        let light_map = match gpu_images.get(&extracted_asset.light_map) {
+        let shadow_map = match gpu_images.get(&extracted_asset.shadow_map) {
             Some(gpu_image) => gpu_image,
             None => return Err(PrepareAssetError::RetryNextUpdate(extracted_asset)),
         };
@@ -119,11 +122,11 @@ impl RenderAsset for MyMaterial {
                 },
                 BindGroupEntry {
                     binding: 2,
-                    resource: BindingResource::TextureView(&light_map.texture_view),
+                    resource: BindingResource::TextureView(&shadow_map.texture_view),
                 },
                 BindGroupEntry {
                     binding: 3,
-                    resource: BindingResource::Sampler(&light_map.sampler),
+                    resource: BindingResource::Sampler(&shadow_map.sampler),
                 },
             ],
             label: None,
@@ -134,7 +137,7 @@ impl RenderAsset for MyMaterial {
     }
 }
 
-impl Material2d for MyMaterial {
+impl Material2d for ShadowMaterial {
     fn vertex_shader(asset_server: &AssetServer) -> Option<Handle<Shader>> {
         Some(asset_server.load("shaders/shader.wgsl"))
     }
@@ -227,7 +230,7 @@ pub fn new_2d(render_target: Handle<Image>) -> OrthographicCameraBundle<FirstPas
 
 fn setup(
     mut commands: Commands,
-    mut custom_materials: ResMut<Assets<MyMaterial>>,
+    mut custom_materials: ResMut<Assets<ShadowMaterial>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     asset_server: Res<AssetServer>,
@@ -246,7 +249,7 @@ fn setup(
         height: window.height() as u32,
         ..default()
     };
-    let mut light_map = Image {
+    let mut shadow_map = Image {
         texture_descriptor: TextureDescriptor {
             label: None,
             size,
@@ -260,8 +263,8 @@ fn setup(
         },
         ..default()
     };
-    light_map.resize(size);
-    let light_map_handle = images.add(light_map);
+    shadow_map.resize(size);
+    let shadow_map_handle = images.add(shadow_map);
 
     let mesh = meshes.add(Mesh::from(Quad::new(Vec2::new(300.0, 300.0))));
 
@@ -284,10 +287,10 @@ fn setup(
         .insert(first_pass_layer);
 
     // First pass camera
-    let render_target = RenderTarget::Image(light_map_handle.clone());
+    let render_target = RenderTarget::Image(shadow_map_handle.clone());
     clear_colors.insert(render_target.clone(), Color::rgb(0.7, 0.7, 0.7));
     commands
-        .spawn_bundle(new_2d(light_map_handle.clone()))
+        .spawn_bundle(new_2d(shadow_map_handle.clone()))
         .insert(first_pass_layer);
     // NOTE: omitting the RenderLayers component for this camera may cause a validation error:
     //
@@ -309,9 +312,9 @@ fn setup(
             let mesh = Mesh::from(Quad::new(Vec2::new(150.0, 150.0)));
             commands.spawn_bundle(MaterialMesh2dBundle {
                 mesh: Mesh2dHandle(meshes.add(mesh)),
-                material: custom_materials.add(MyMaterial::new(
+                material: custom_materials.add(ShadowMaterial::new(
                     asset_server.load("tree.png"),
-                    light_map_handle.clone(),
+                    shadow_map_handle.clone(),
                 )),
                 transform: Transform {
                     translation: Vec3::new(160.0 * i as f32, 160.0 * j as f32, 0.0),
@@ -326,7 +329,7 @@ fn setup(
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins)
-        .add_plugin(Material2dPlugin::<MyMaterial>::default())
+        .add_plugin(Material2dPlugin::<ShadowMaterial>::default())
         .add_plugin(CameraTypePlugin::<FirstPassCamera>::default())
         .add_system(move_light_system)
         .add_system(track_mouse_world_position_system)
