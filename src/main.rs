@@ -7,11 +7,8 @@ use bevy::diagnostic::LogDiagnosticsPlugin;
 use bevy::prelude::shape::Quad;
 use bevy::prelude::*;
 use bevy::render::camera::ActiveCamera;
-use bevy::render::camera::CameraProjection;
 use bevy::render::camera::CameraTypePlugin;
-use bevy::render::camera::DepthCalculation;
 use bevy::render::camera::RenderTarget;
-use bevy::render::primitives::Frustum;
 use bevy::render::render_graph::Node;
 use bevy::render::render_graph::NodeRunError;
 use bevy::render::render_graph::RenderGraph;
@@ -25,62 +22,26 @@ use bevy::render::render_resource::TextureFormat;
 use bevy::render::render_resource::TextureUsages;
 use bevy::render::renderer::RenderContext;
 use bevy::render::view::RenderLayers;
-use bevy::render::view::VisibleEntities;
 use bevy::render::RenderApp;
 use bevy::render::RenderStage;
 use bevy::sprite::Material2dPlugin;
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::sprite::Mesh2dHandle;
 use bevy::window::PresentMode;
+use light_pass::LightPassCamera;
+use light_pass::LIGHT_PASS_DRIVER;
 use mouse_position::track_mouse_world_position_system;
 use mouse_position::MousePosition;
 use shadow_material::ShadowMaterial;
 
+use crate::light_pass::new_light_camera;
+
+mod light_pass;
 mod mouse_position;
 mod shadow_material;
 
-// The name of the final node of the first pass.
-pub const FIRST_PASS_DRIVER: &str = "first_pass_driver";
-
 #[derive(Component)]
 pub struct WorldCamera;
-
-#[derive(Component, Default)]
-pub struct FirstPassCamera;
-
-pub fn new_2d(render_target: Handle<Image>) -> OrthographicCameraBundle<FirstPassCamera> {
-    // we want 0 to be "closest" and +far to be "farthest" in 2d, so we offset
-    // the camera's translation by far and use a right handed coordinate system
-    let far = 1000.0;
-    let orthographic_projection = OrthographicProjection {
-        far,
-        depth_calculation: DepthCalculation::ZDifference,
-        ..Default::default()
-    };
-    let transform = Transform::from_xyz(0.0, 0.0, far - 0.1);
-    let view_projection =
-        orthographic_projection.get_projection_matrix() * transform.compute_matrix().inverse();
-    let frustum = Frustum::from_view_projection(
-        &view_projection,
-        &transform.translation,
-        &transform.back(),
-        orthographic_projection.far(),
-    );
-    OrthographicCameraBundle {
-        camera: Camera {
-            near: orthographic_projection.near,
-            far: orthographic_projection.far,
-            target: RenderTarget::Image(render_target),
-            ..Default::default()
-        },
-        orthographic_projection,
-        visible_entities: VisibleEntities::default(),
-        frustum,
-        transform,
-        global_transform: Default::default(),
-        marker: FirstPassCamera,
-    }
-}
 
 fn setup(
     mut commands: Commands,
@@ -144,7 +105,7 @@ fn setup(
     let render_target = RenderTarget::Image(shadow_map_handle.clone());
     clear_colors.insert(render_target.clone(), Color::rgb(0.7, 0.7, 0.7));
     commands
-        .spawn_bundle(new_2d(shadow_map_handle.clone()))
+        .spawn_bundle(new_light_camera(shadow_map_handle.clone()))
         .insert(first_pass_layer);
     // NOTE: omitting the RenderLayers component for this camera may cause a validation error:
     //
@@ -184,7 +145,7 @@ fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins)
         .add_plugin(Material2dPlugin::<ShadowMaterial>::default())
-        .add_plugin(CameraTypePlugin::<FirstPassCamera>::default())
+        .add_plugin(CameraTypePlugin::<LightPassCamera>::default())
         .add_system(move_light_system)
         .add_system(track_mouse_world_position_system)
         .add_plugin(FrameTimeDiagnosticsPlugin)
@@ -204,19 +165,19 @@ fn main() {
     let mut graph = render_app.world.resource_mut::<RenderGraph>();
 
     // Add a node for the first pass.
-    graph.add_node(FIRST_PASS_DRIVER, driver);
+    graph.add_node(LIGHT_PASS_DRIVER, driver);
 
     // The first pass's dependencies include those of the main pass.
     graph
-        .add_node_edge(node::MAIN_PASS_DEPENDENCIES, FIRST_PASS_DRIVER)
+        .add_node_edge(node::MAIN_PASS_DEPENDENCIES, LIGHT_PASS_DRIVER)
         .unwrap();
 
     // Insert the first pass node: CLEAR_PASS_DRIVER -> FIRST_PASS_DRIVER -> MAIN_PASS_DRIVER
     graph
-        .add_node_edge(node::CLEAR_PASS_DRIVER, FIRST_PASS_DRIVER)
+        .add_node_edge(node::CLEAR_PASS_DRIVER, LIGHT_PASS_DRIVER)
         .unwrap();
     graph
-        .add_node_edge(FIRST_PASS_DRIVER, node::MAIN_PASS_DRIVER)
+        .add_node_edge(LIGHT_PASS_DRIVER, node::MAIN_PASS_DRIVER)
         .unwrap();
     // bevy_mod_debugdump::print_render_graph(&mut app);
     app.run();
@@ -225,7 +186,7 @@ fn main() {
 // Add 3D render phases for FIRST_PASS_CAMERA.
 fn extract_first_pass_camera_phases(
     mut commands: Commands,
-    active: Res<ActiveCamera<FirstPassCamera>>,
+    active: Res<ActiveCamera<LightPassCamera>>,
 ) {
     if let Some(entity) = active.get() {
         commands
@@ -236,7 +197,7 @@ fn extract_first_pass_camera_phases(
 
 // A node for the first pass camera that runs draw_3d_graph with this camera.
 struct FirstPassCameraDriver {
-    query: QueryState<Entity, With<FirstPassCamera>>,
+    query: QueryState<Entity, With<LightPassCamera>>,
 }
 
 impl FirstPassCameraDriver {
