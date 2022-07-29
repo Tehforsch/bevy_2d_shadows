@@ -10,13 +10,15 @@ use bevy::render::render_resource::TextureDescriptor;
 use bevy::render::render_resource::TextureDimension;
 use bevy::render::render_resource::TextureFormat;
 use bevy::render::render_resource::TextureUsages;
+use bevy::sprite::Material2dPlugin;
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::sprite::Mesh2dHandle;
 use bevy::window::PresentMode;
 use light::move_light_system;
-use light::setup_lights_system;
+use light::spawn_lights_system;
 use mouse_position::track_mouse_world_position_system;
 use mouse_position::MousePosition;
+use shadow_caster::ShadowCaster;
 use shadow_material::ShadowMaterial;
 use shadow_pass::ShadowMap;
 use shadow_pass::LIGHT_PASS_LAYER;
@@ -27,6 +29,7 @@ use crate::shadow_pass::new_light_camera;
 
 mod light;
 mod mouse_position;
+mod shadow_caster;
 mod shadow_material;
 mod shadow_pass;
 mod shadow_plugin;
@@ -79,26 +82,35 @@ fn spawn_objects_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut custom_materials: ResMut<Assets<ShadowMaterial>>,
+    mut color_materials: ResMut<Assets<ColorMaterial>>,
     asset_server: Res<AssetServer>,
     shadow_map: Res<ShadowMap>,
 ) {
-    for i in -5..5i32 {
-        for j in -5..5i32 {
-            let mesh = Mesh::from(Quad::new(Vec2::new(150.0, 150.0)));
-            commands.spawn_bundle(MaterialMesh2dBundle {
-                mesh: Mesh2dHandle(meshes.add(mesh)),
-                material: custom_materials.add(ShadowMaterial::new(
-                    asset_server.load("tree.png"),
-                    shadow_map.0.clone().unwrap(),
-                )),
-                transform: Transform {
-                    translation: Vec3::new(160.0 * i as f32, 160.0 * j as f32, 0.0),
-                    ..default()
-                },
+    let mesh = Mesh::from(Quad::new(Vec2::new(1000.0, 1000.0)));
+    commands.spawn_bundle(MaterialMesh2dBundle {
+        mesh: Mesh2dHandle(meshes.add(mesh)),
+        material: custom_materials.add(ShadowMaterial::new(
+            asset_server.load("tree.png"),
+            shadow_map.0.clone().unwrap(),
+        )),
+        ..default()
+    });
+    let mesh = Mesh::from(Quad::new(Vec2::new(50.0, 50.0)));
+    let color_material = ColorMaterial {
+        color: Color::RED,
+        ..default()
+    };
+    commands
+        .spawn_bundle(MaterialMesh2dBundle::<ColorMaterial> {
+            mesh: Mesh2dHandle(meshes.add(mesh)),
+            material: color_materials.add(color_material),
+            transform: Transform {
+                translation: Vec3::new(200.0 as f32, 0.0, 0.1),
                 ..default()
-            });
-        }
-    }
+            },
+            ..default()
+        })
+        .insert(ShadowCaster::new());
 }
 
 fn main() {
@@ -119,7 +131,7 @@ fn main() {
         .insert_resource(MousePosition::default())
         .add_startup_system(spawn_objects_system.after(setup_shadow_pass_system))
         .add_startup_system(setup_camera_system)
-        .add_startup_system(setup_lights_system)
+        .add_startup_system(spawn_lights_system)
         .add_system(move_light_system)
         .add_system(track_mouse_world_position_system);
 

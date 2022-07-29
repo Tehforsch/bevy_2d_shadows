@@ -16,6 +16,7 @@ use bevy::render::RenderStage;
 use bevy::sprite::Material2dPlugin;
 
 use crate::setup_shadow_pass_system;
+use crate::shadow_caster::spawn_shadows_system;
 use crate::shadow_material::ShadowMaterial;
 use crate::shadow_pass::LightPassCamera;
 use crate::shadow_pass::ShadowMap;
@@ -28,6 +29,7 @@ impl Plugin for ShadowPlugin {
         app.add_plugin(Material2dPlugin::<ShadowMaterial>::default())
             .add_plugin(CameraTypePlugin::<LightPassCamera>::default())
             .insert_resource(ShadowMap(None))
+            .add_system(spawn_shadows_system)
             .add_startup_system(setup_shadow_pass_system);
 
         let render_app = app.sub_app_mut(RenderApp);
