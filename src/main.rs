@@ -2,7 +2,6 @@ use bevy::core_pipeline::draw_2d_graph;
 use bevy::core_pipeline::node;
 use bevy::core_pipeline::RenderTargetClearColors;
 use bevy::core_pipeline::Transparent2d;
-use bevy::diagnostic::DiagnosticsPlugin;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::diagnostic::LogDiagnosticsPlugin;
 use bevy::ecs::system::lifetimeless::SRes;
@@ -300,7 +299,7 @@ fn setup(
     light_map.resize(size);
     let light_map_handle = images.add(light_map);
 
-    let mesh = meshes.add(Mesh::from(Quad::new(Vec2::new(100.0, 100.0))));
+    let mesh = meshes.add(Mesh::from(Quad::new(Vec2::new(300.0, 300.0))));
 
     // This specifies the layer used for the first pass, which will be attached to the first pass camera and cube.
     let first_pass_layer = RenderLayers::layer(1);
@@ -341,9 +340,9 @@ fn setup(
     // So either render layers must be used to avoid this, or the texture must be double buffered.
 
     // second pass stuff
-    for i in -10i32..10i32 {
-        for j in -10i32..10i32 {
-            let mesh = Mesh::from(Quad::new(Vec2::new(50.0, 50.0)));
+    for i in -5..5i32 {
+        for j in -5..5i32 {
+            let mesh = Mesh::from(Quad::new(Vec2::new(150.0, 150.0)));
             commands.spawn_bundle(MaterialMesh2dBundle {
                 mesh: Mesh2dHandle(meshes.add(mesh)),
                 material: custom_materials.add(MyMaterial::new(
@@ -351,7 +350,7 @@ fn setup(
                     light_map_handle.clone(),
                 )),
                 transform: Transform {
-                    translation: Vec3::new(60.0 * i as f32, 60.0 * j as f32, 0.0),
+                    translation: Vec3::new(160.0 * i as f32, 160.0 * j as f32, 0.0),
                     ..default()
                 },
                 ..default()
@@ -369,9 +368,6 @@ fn main() {
         .add_system(track_mouse_world_position_system)
         .add_plugin(FrameTimeDiagnosticsPlugin)
         .insert_resource(WindowDescriptor {
-            title: "I am a window!".to_string(),
-            width: 500.,
-            height: 300.,
             present_mode: PresentMode::Immediate,
             ..default()
         })
