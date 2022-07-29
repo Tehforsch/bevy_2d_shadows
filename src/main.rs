@@ -1,3 +1,4 @@
+use bevy::asset::AssetServerSettings;
 use bevy::core_pipeline::draw_2d_graph;
 use bevy::core_pipeline::node;
 use bevy::core_pipeline::RenderTargetClearColors;
@@ -21,7 +22,6 @@ use bevy::render::render_resource::TextureDimension;
 use bevy::render::render_resource::TextureFormat;
 use bevy::render::render_resource::TextureUsages;
 use bevy::render::renderer::RenderContext;
-use bevy::render::view::RenderLayers;
 use bevy::render::RenderApp;
 use bevy::render::RenderStage;
 use bevy::sprite::Material2dPlugin;
@@ -30,34 +30,20 @@ use bevy::sprite::Mesh2dHandle;
 use bevy::window::PresentMode;
 use light_pass::LightPassCamera;
 use light_pass::LIGHT_PASS_DRIVER;
+use light_pass::LIGHT_PASS_LAYER;
 use mouse_position::track_mouse_world_position_system;
 use mouse_position::MousePosition;
 use shadow_material::ShadowMaterial;
+use world_camera::setup_camera;
 
 use crate::light_pass::new_light_camera;
 
 mod light_pass;
 mod mouse_position;
 mod shadow_material;
+mod world_camera;
 
-#[derive(Component)]
-pub struct WorldCamera;
-
-fn setup(
-    mut commands: Commands,
-    mut custom_materials: ResMut<Assets<ShadowMaterial>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    asset_server: Res<AssetServer>,
-    mut images: ResMut<Assets<Image>>,
-    mut clear_colors: ResMut<RenderTargetClearColors>,
-    mut windows: ResMut<Windows>,
-) {
-    asset_server.watch_for_changes().unwrap();
-    commands
-        .spawn_bundle(OrthographicCameraBundle::new_2d())
-        .insert(WorldCamera);
-    let window = windows.get_primary_mut().unwrap();
+fn get_shadow_map(window: &Window) -> Image {
     println!("Window size was: {},{}", window.width(), window.height());
     let size = Extent3d {
         width: window.width() as u32,
@@ -79,12 +65,15 @@ fn setup(
         ..default()
     };
     shadow_map.resize(size);
-    let shadow_map_handle = images.add(shadow_map);
+    shadow_map
+}
 
+fn setup_lights(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
     let mesh = meshes.add(Mesh::from(Quad::new(Vec2::new(300.0, 300.0))));
-
-    // This specifies the layer used for the first pass, which will be attached to the first pass camera and cube.
-    let first_pass_layer = RenderLayers::layer(1);
 
     let mat = materials.add(ColorMaterial {
         color: Color::WHITE,
@@ -99,14 +88,26 @@ fn setup(
             ..default()
         })
         .insert(FirstPassCube)
-        .insert(first_pass_layer);
+        .insert(LIGHT_PASS_LAYER);
+}
 
-    // First pass camera
+fn setup_shadow_pass(
+    mut commands: Commands,
+    mut custom_materials: ResMut<Assets<ShadowMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    asset_server: Res<AssetServer>,
+    mut images: ResMut<Assets<Image>>,
+    mut clear_colors: ResMut<RenderTargetClearColors>,
+    mut windows: ResMut<Windows>,
+) {
+    let window = windows.get_primary_mut().unwrap();
+    let shadow_map_handle = images.add(get_shadow_map(window));
+
     let render_target = RenderTarget::Image(shadow_map_handle.clone());
     clear_colors.insert(render_target.clone(), Color::rgb(0.7, 0.7, 0.7));
     commands
         .spawn_bundle(new_light_camera(shadow_map_handle.clone()))
-        .insert(first_pass_layer);
+        .insert(LIGHT_PASS_LAYER);
     // NOTE: omitting the RenderLayers component for this camera may cause a validation error:
     //
     // thread 'main' panicked at 'wgpu error: Validation Error
@@ -143,19 +144,26 @@ fn setup(
 
 fn main() {
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins)
-        .add_plugin(Material2dPlugin::<ShadowMaterial>::default())
-        .add_plugin(CameraTypePlugin::<LightPassCamera>::default())
-        .add_system(move_light_system)
-        .add_system(track_mouse_world_position_system)
-        .add_plugin(FrameTimeDiagnosticsPlugin)
-        .insert_resource(WindowDescriptor {
-            present_mode: PresentMode::Immediate,
-            ..default()
-        })
-        .add_plugin(LogDiagnosticsPlugin::default())
-        .insert_resource(MousePosition::default())
-        .add_startup_system(setup);
+
+    app.insert_resource(AssetServerSettings {
+        watch_for_changes: true,
+        ..default()
+    })
+    .add_plugins(DefaultPlugins)
+    .add_plugin(Material2dPlugin::<ShadowMaterial>::default())
+    .add_plugin(CameraTypePlugin::<LightPassCamera>::default())
+    .add_system(move_light_system)
+    .add_system(track_mouse_world_position_system)
+    .add_startup_system(setup_camera)
+    .add_plugin(FrameTimeDiagnosticsPlugin)
+    .insert_resource(WindowDescriptor {
+        present_mode: PresentMode::Immediate,
+        ..default()
+    })
+    .add_plugin(LogDiagnosticsPlugin::default())
+    .insert_resource(MousePosition::default())
+    .add_startup_system(setup_lights)
+    .add_startup_system(setup_shadow_pass);
 
     let render_app = app.sub_app_mut(RenderApp);
     let driver = FirstPassCameraDriver::new(&mut render_app.world);

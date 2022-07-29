@@ -1,7 +1,7 @@
 use bevy::math::Vec2;
 use bevy::prelude::*;
 
-use crate::WorldCamera;
+use crate::world_camera::WorldCamera;
 
 #[derive(Debug, Default, Clone)]
 pub struct MousePosition {

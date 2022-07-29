@@ -3,10 +3,13 @@ use bevy::render::camera::CameraProjection;
 use bevy::render::camera::DepthCalculation;
 use bevy::render::camera::RenderTarget;
 use bevy::render::primitives::Frustum;
+use bevy::render::view::RenderLayers;
 use bevy::render::view::VisibleEntities;
 
 // The name of the final node of the pass.
 pub const LIGHT_PASS_DRIVER: &str = "light_pass_driver";
+
+pub const LIGHT_PASS_LAYER: RenderLayers = RenderLayers::layer(1);
 
 #[derive(Component, Default)]
 pub struct LightPassCamera;
