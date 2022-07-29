@@ -20,6 +20,7 @@ use mouse_position::MousePosition;
 use shadow_material::ShadowMaterial;
 use shadow_pass::ShadowMap;
 use shadow_pass::LIGHT_PASS_LAYER;
+use shadow_plugin::ShadowPlugin;
 use world_camera::setup_camera_system;
 
 use crate::shadow_pass::new_light_camera;
@@ -103,21 +104,24 @@ fn spawn_objects_system(
 fn main() {
     let mut app = App::new();
 
-    app.insert_resource(AssetServerSettings {
-        watch_for_changes: true,
-        ..default()
-    })
-    .add_plugins(DefaultPlugins)
-    .add_system(move_light_system)
-    .add_startup_system(spawn_objects_system.after(setup_shadow_pass_system))
-    .add_system(track_mouse_world_position_system)
-    .add_startup_system(setup_camera_system)
-    .add_plugin(FrameTimeDiagnosticsPlugin)
-    .insert_resource(WindowDescriptor {
-        present_mode: PresentMode::Immediate,
-        ..default()
-    })
-    .add_plugin(LogDiagnosticsPlugin::default())
-    .insert_resource(MousePosition::default())
-    .add_startup_system(setup_lights_system);
+    app.add_plugins(DefaultPlugins)
+        .add_plugin(FrameTimeDiagnosticsPlugin)
+        .add_plugin(LogDiagnosticsPlugin::default())
+        .add_plugin(ShadowPlugin)
+        .insert_resource(AssetServerSettings {
+            watch_for_changes: true,
+            ..default()
+        })
+        .insert_resource(WindowDescriptor {
+            present_mode: PresentMode::Immediate,
+            ..default()
+        })
+        .insert_resource(MousePosition::default())
+        .add_startup_system(spawn_objects_system.after(setup_shadow_pass_system))
+        .add_startup_system(setup_camera_system)
+        .add_startup_system(setup_lights_system)
+        .add_system(move_light_system)
+        .add_system(track_mouse_world_position_system);
+
+    app.run();
 }

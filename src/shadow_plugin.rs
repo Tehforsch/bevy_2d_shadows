@@ -21,7 +21,7 @@ use crate::shadow_pass::LightPassCamera;
 use crate::shadow_pass::ShadowMap;
 use crate::shadow_pass::LIGHT_PASS_DRIVER;
 
-struct ShadowPlugin;
+pub struct ShadowPlugin;
 
 impl Plugin for ShadowPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
@@ -52,8 +52,6 @@ impl Plugin for ShadowPlugin {
         graph
             .add_node_edge(LIGHT_PASS_DRIVER, node::MAIN_PASS_DRIVER)
             .unwrap();
-        // bevy_mod_debugdump::print_render_graph(&mut app);
-        app.run();
     }
 }
 
