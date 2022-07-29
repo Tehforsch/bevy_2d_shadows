@@ -167,6 +167,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy_2d_shadows"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy_mod_debugdump",
+ "bytemuck",
+ "ordered-float",
+]
+
+[[package]]
 name = "bevy_app"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -994,16 +1004,6 @@ name = "cty"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b365fabc795046672053e29c954733ec3b05e4be654ab130fe8f1f94d7051f35"
-
-[[package]]
-name = "custom_pipeline"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bevy_mod_debugdump",
- "bytemuck",
- "ordered-float",
-]
 
 [[package]]
 name = "d3d12"

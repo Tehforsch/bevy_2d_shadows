@@ -1,5 +1,5 @@
 [package]
-name = "custom_pipeline"
+name = "bevy_2d_shadows"
 version = "0.1.0"
 edition = "2021"
 
