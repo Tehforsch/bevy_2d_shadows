@@ -2,8 +2,8 @@ use bevy::prelude::shape::Quad;
 use bevy::prelude::*;
 use bevy::sprite::Mesh2dHandle;
 
-use crate::light_pass::LIGHT_PASS_LAYER;
 use crate::mouse_position::MousePosition;
+use crate::shadow_pass::LIGHT_PASS_LAYER;
 
 #[derive(Component)]
 pub struct Light;

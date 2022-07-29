@@ -30,21 +30,21 @@ use bevy::sprite::Mesh2dHandle;
 use bevy::window::PresentMode;
 use light::move_light_system;
 use light::setup_lights_system;
-use light_pass::LightPassCamera;
-use light_pass::ShadowMap;
-use light_pass::LIGHT_PASS_DRIVER;
-use light_pass::LIGHT_PASS_LAYER;
 use mouse_position::track_mouse_world_position_system;
 use mouse_position::MousePosition;
 use shadow_material::ShadowMaterial;
+use shadow_pass::LightPassCamera;
+use shadow_pass::ShadowMap;
+use shadow_pass::LIGHT_PASS_DRIVER;
+use shadow_pass::LIGHT_PASS_LAYER;
 use world_camera::setup_camera_system;
 
-use crate::light_pass::new_light_camera;
+use crate::shadow_pass::new_light_camera;
 
 mod light;
-mod light_pass;
 mod mouse_position;
 mod shadow_material;
+mod shadow_pass;
 mod world_camera;
 
 fn get_shadow_map(window: &Window) -> Image {
