@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use bevy::math::Vec3Swizzles;
 use bevy::math::Vec4Swizzles;
-use bevy::prelude::shape::Quad;
 use bevy::prelude::*;
 use bevy::render::mesh::Indices;
 use bevy::render::mesh::PrimitiveTopology;
@@ -12,6 +11,7 @@ use ordered_float::OrderedFloat;
 
 use crate::light::Light;
 use crate::shadow_pass::LIGHT_PASS_LAYER;
+use crate::DARK_COLOR;
 
 #[derive(Component)]
 pub struct Shadow;
@@ -60,7 +60,7 @@ pub fn spawn_shadows_system(
                         get_shadow_mesh(light_pos, &shadow_caster_mesh, shadow_caster_transform);
                     let handle = meshes.add(shadow_mesh);
                     let mat = materials.add(ColorMaterial {
-                        color: Color::BLUE,
+                        color: DARK_COLOR,
                         ..Default::default()
                     });
 

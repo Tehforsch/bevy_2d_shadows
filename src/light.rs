@@ -22,12 +22,14 @@ pub fn spawn_lights_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    asset_server: Res<AssetServer>,
 ) {
     let mesh = meshes.add(Mesh::from(Quad::new(Vec2::new(300.0, 300.0))));
 
     for color in [Color::WHITE] {
         let mat = materials.add(ColorMaterial {
             color,
+            texture: Some(asset_server.load("light.png")),
             ..Default::default()
         });
 

@@ -10,7 +10,6 @@ use bevy::render::render_resource::TextureDescriptor;
 use bevy::render::render_resource::TextureDimension;
 use bevy::render::render_resource::TextureFormat;
 use bevy::render::render_resource::TextureUsages;
-use bevy::sprite::Material2dPlugin;
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::sprite::Mesh2dHandle;
 use bevy::window::PresentMode;
@@ -34,6 +33,8 @@ mod shadow_material;
 mod shadow_pass;
 mod shadow_plugin;
 mod world_camera;
+
+pub const DARK_COLOR: Color = Color::rgb(0.3, 0.3, 0.3);
 
 fn get_shadow_map(window: &Window) -> Image {
     println!("Window size was: {},{}", window.width(), window.height());
@@ -72,7 +73,7 @@ fn setup_shadow_pass_system(
     *shadow_map = ShadowMap(Some(shadow_map_handle.clone()));
 
     let render_target = RenderTarget::Image(shadow_map_handle.clone());
-    clear_colors.insert(render_target.clone(), Color::rgb(0.7, 0.7, 0.7));
+    clear_colors.insert(render_target.clone(), DARK_COLOR);
     commands
         .spawn_bundle(new_light_camera(shadow_map_handle))
         .insert(LIGHT_PASS_LAYER);
@@ -90,7 +91,7 @@ fn spawn_objects_system(
     commands.spawn_bundle(MaterialMesh2dBundle {
         mesh: Mesh2dHandle(meshes.add(mesh)),
         material: custom_materials.add(ShadowMaterial::new(
-            asset_server.load("tree.png"),
+            asset_server.load("floor.png"),
             shadow_map.0.clone().unwrap(),
         )),
         ..default()
@@ -102,10 +103,21 @@ fn spawn_objects_system(
     };
     commands
         .spawn_bundle(MaterialMesh2dBundle::<ColorMaterial> {
+            mesh: Mesh2dHandle(meshes.add(mesh.clone())),
+            material: color_materials.add(color_material.clone()),
+            transform: Transform {
+                translation: Vec3::new(200.0 as f32, 0.0, 0.1),
+                ..default()
+            },
+            ..default()
+        })
+        .insert(ShadowCaster::new());
+    commands
+        .spawn_bundle(MaterialMesh2dBundle::<ColorMaterial> {
             mesh: Mesh2dHandle(meshes.add(mesh)),
             material: color_materials.add(color_material),
             transform: Transform {
-                translation: Vec3::new(200.0 as f32, 0.0, 0.1),
+                translation: Vec3::new(-200.0 as f32, 0.0, 0.1),
                 ..default()
             },
             ..default()
