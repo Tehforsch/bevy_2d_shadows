@@ -24,8 +24,6 @@ use bevy::render::render_graph::RenderGraph;
 use bevy::render::render_graph::RenderGraphContext;
 use bevy::render::render_graph::SlotValue;
 use bevy::render::render_phase::RenderPhase;
-use bevy::render::render_resource::std140::AsStd140;
-use bevy::render::render_resource::std140::Std140;
 use bevy::render::render_resource::BindGroup;
 use bevy::render::render_resource::BindGroupDescriptor;
 use bevy::render::render_resource::BindGroupEntry;
@@ -34,10 +32,6 @@ use bevy::render::render_resource::BindGroupLayoutDescriptor;
 use bevy::render::render_resource::BindGroupLayoutEntry;
 use bevy::render::render_resource::BindingResource;
 use bevy::render::render_resource::BindingType;
-use bevy::render::render_resource::BufferBindingType;
-use bevy::render::render_resource::BufferInitDescriptor;
-use bevy::render::render_resource::BufferSize;
-use bevy::render::render_resource::BufferUsages;
 use bevy::render::render_resource::Extent3d;
 use bevy::render::render_resource::SamplerBindingType;
 use bevy::render::render_resource::ShaderStages;
@@ -67,27 +61,16 @@ mod mouse_position;
 // The name of the final node of the first pass.
 pub const FIRST_PASS_DRIVER: &str = "first_pass_driver";
 
-#[derive(AsStd140, Clone, Debug, Default)]
-pub struct MyData {
-    x: f32,
-}
-
 #[derive(Debug, Clone, TypeUuid)]
 #[uuid = "106b9f9a-bf10-11ec-9d64-0242ac120002"]
 pub struct MyMaterial {
     pub texture: Handle<Image>,
     pub light_map: Handle<Image>,
-    pub shader_data: MyData,
 }
 
 impl MyMaterial {
     fn new(texture: Handle<Image>, light_map: Handle<Image>) -> Self {
-        let shader_data = MyData { x: 0.0 };
-        Self {
-            texture,
-            light_map,
-            shader_data,
-        }
+        Self { texture, light_map }
     }
 }
 
@@ -124,11 +107,6 @@ impl RenderAsset for MyMaterial {
             None => return Err(PrepareAssetError::RetryNextUpdate(extracted_asset)),
         };
 
-        let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-            contents: extracted_asset.shader_data.as_std140().as_bytes(),
-            label: None,
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
         let bind_group = render_device.create_bind_group(&BindGroupDescriptor {
             entries: &[
                 BindGroupEntry {
@@ -146,10 +124,6 @@ impl RenderAsset for MyMaterial {
                 BindGroupEntry {
                     binding: 3,
                     resource: BindingResource::Sampler(&light_map.sampler),
-                },
-                BindGroupEntry {
-                    binding: 4,
-                    resource: buffer.as_entire_binding(),
                 },
             ],
             label: None,
@@ -206,16 +180,6 @@ impl Material2d for MyMaterial {
                     binding: 3,
                     visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                    count: None,
-                },
-                BindGroupLayoutEntry {
-                    binding: 4,
-                    visibility: ShaderStages::VERTEX_FRAGMENT,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: BufferSize::new(MyData::std140_size_static() as u64),
-                    },
                     count: None,
                 },
             ],

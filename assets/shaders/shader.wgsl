@@ -1,7 +1,3 @@
-struct Data {
-    some_random_float: f32;
-};
-
 #import bevy_sprite::mesh2d_view_bind_group
 [[group(0), binding(0)]]
 var<uniform> view: View;
@@ -14,8 +10,6 @@ var texture_sampler: sampler;
 var light_map: texture_2d<f32>;
 [[group(1), binding(3)]]
 var light_map_sampler: sampler;
-[[group(1), binding(4)]]
-var<uniform> data: Data;
 [[group(2), binding(0)]]
 var<uniform> mesh: Mesh2d;
 
