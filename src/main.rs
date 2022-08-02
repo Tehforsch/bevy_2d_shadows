@@ -1,15 +1,14 @@
 use bevy::asset::AssetServerSettings;
-use bevy::core_pipeline::RenderTargetClearColors;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::diagnostic::LogDiagnosticsPlugin;
 use bevy::prelude::shape::Quad;
 use bevy::prelude::*;
-use bevy::render::camera::RenderTarget;
 use bevy::render::render_resource::Extent3d;
 use bevy::render::render_resource::TextureDescriptor;
 use bevy::render::render_resource::TextureDimension;
 use bevy::render::render_resource::TextureFormat;
 use bevy::render::render_resource::TextureUsages;
+use bevy::sprite::Material2dPlugin;
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::sprite::Mesh2dHandle;
 use bevy::window::PresentMode;
@@ -48,7 +47,7 @@ fn get_shadow_map(window: &Window) -> Image {
             label: None,
             size,
             dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba8Unorm,
+            format: TextureFormat::Bgra8UnormSrgb,
             mip_level_count: 1,
             sample_count: 1,
             usage: TextureUsages::TEXTURE_BINDING
@@ -64,7 +63,6 @@ fn get_shadow_map(window: &Window) -> Image {
 fn setup_shadow_pass_system(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
-    mut clear_colors: ResMut<RenderTargetClearColors>,
     mut windows: ResMut<Windows>,
     mut shadow_map: ResMut<ShadowMap>,
 ) {
@@ -72,8 +70,6 @@ fn setup_shadow_pass_system(
     let shadow_map_handle = images.add(get_shadow_map(window));
     *shadow_map = ShadowMap(Some(shadow_map_handle.clone()));
 
-    let render_target = RenderTarget::Image(shadow_map_handle.clone());
-    clear_colors.insert(render_target.clone(), DARK_COLOR);
     commands
         .spawn_bundle(new_light_camera(shadow_map_handle))
         .insert(LIGHT_PASS_LAYER);
@@ -129,6 +125,7 @@ fn main() {
     let mut app = App::new();
 
     app.add_plugins(DefaultPlugins)
+        .add_plugin(Material2dPlugin::<ShadowMaterial>::default())
         .add_plugin(FrameTimeDiagnosticsPlugin)
         .add_plugin(LogDiagnosticsPlugin::default())
         .add_plugin(ShadowPlugin)

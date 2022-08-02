@@ -55,7 +55,7 @@ pub fn spawn_shadows_system(
                 }
                 None => {
                     let shadow_caster_mesh: &Mesh =
-                        meshes.get(shadow_caster_mesh_handle.0.clone()).unwrap();
+                        meshes.get(&shadow_caster_mesh_handle.0).unwrap();
                     let shadow_mesh =
                         get_shadow_mesh(light_pos, &shadow_caster_mesh, shadow_caster_transform);
                     let handle = meshes.add(shadow_mesh);
@@ -87,9 +87,9 @@ fn adjust_shadow_mesh(
     shadow_caster_transform: &Transform,
     shadow_mesh_handle: &Mesh2dHandle,
 ) {
-    let shadow_caster_mesh = meshes.get(shadow_caster_mesh_handle.0.clone()).unwrap();
+    let shadow_caster_mesh = meshes.get(&shadow_caster_mesh_handle.0).unwrap();
     let new_mesh = get_shadow_mesh(light_pos, shadow_caster_mesh, shadow_caster_transform);
-    let shadow_mesh = meshes.get_mut(shadow_mesh_handle.0.clone()).unwrap();
+    let shadow_mesh = meshes.get_mut(&shadow_mesh_handle.0).unwrap();
     *shadow_mesh = new_mesh;
 }
 
