@@ -34,7 +34,11 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let color = textureSample(texture, texture_sampler, in.tex_coords);
-    let uv = in.clip_position.xy / vec2<f32>(view.width, view.height);
+
+    let lightmap_dimensions_int = textureDimensions(light_map);
+    let lightmap_dimensions = vec2<f32>(f32(lightmap_dimensions_int.x), f32(lightmap_dimensions_int.y));
+    let uv = in.clip_position.xy / lightmap_dimensions;
+
     let light = textureSample(light_map, light_map_sampler, uv);
 
     return color * light;
