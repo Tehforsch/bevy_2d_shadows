@@ -68,6 +68,10 @@ pub fn spawn_shadows_system(
                         .spawn_bundle(ColorMesh2dBundle {
                             mesh: Mesh2dHandle(handle.clone()),
                             material: mat.clone(),
+                            transform: Transform {
+                                translation: Vec3::new(0.0, 0.0, 0.1),
+                                ..default()
+                            },
                             ..default()
                         })
                         .insert(LIGHT_PASS_LAYER)

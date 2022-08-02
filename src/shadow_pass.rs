@@ -16,6 +16,7 @@ pub struct ShadowMap(pub Option<Handle<Image>>);
 pub fn new_light_camera(render_target: Handle<Image>) -> Camera2dBundle {
     Camera2dBundle {
         camera: Camera {
+            priority: -1,
             target: RenderTarget::Image(render_target),
             ..Default::default()
         },
