@@ -12,8 +12,8 @@ pub fn move_light_system(
     mouse_pos: Res<MousePosition>,
     mut query: Query<&mut Transform, With<Light>>,
 ) {
-    for (_i, mut transform) in query.iter_mut().enumerate() {
-        transform.translation.x = mouse_pos.world.x;
+    for (i, mut transform) in query.iter_mut().enumerate() {
+        transform.translation.x = mouse_pos.world.x + i as f32 * 400.0;
         transform.translation.y = mouse_pos.world.y;
     }
 }
@@ -24,9 +24,9 @@ pub fn spawn_lights_system(
     mut materials: ResMut<Assets<ColorMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
-    let mesh = meshes.add(Mesh::from(Quad::new(Vec2::new(300.0, 300.0))));
+    let mesh = meshes.add(Mesh::from(Quad::new(Vec2::new(800.0, 800.0))));
 
-    for color in [Color::WHITE] {
+    for color in [Color::WHITE, Color::RED] {
         let mat = materials.add(ColorMaterial {
             color,
             texture: Some(asset_server.load("light.png")),

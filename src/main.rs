@@ -102,7 +102,7 @@ fn spawn_objects_system(
             mesh: Mesh2dHandle(meshes.add(mesh.clone())),
             material: color_materials.add(color_material.clone()),
             transform: Transform {
-                translation: Vec3::new(200.0 as f32, 0.0, 0.1),
+                translation: Vec3::new(100.0 as f32, 0.0, 0.1),
                 ..default()
             },
             ..default()
@@ -113,7 +113,7 @@ fn spawn_objects_system(
             mesh: Mesh2dHandle(meshes.add(mesh)),
             material: color_materials.add(color_material),
             transform: Transform {
-                translation: Vec3::new(-200.0 as f32, 0.0, 0.1),
+                translation: Vec3::new(-100.0 as f32, 0.0, 0.1),
                 ..default()
             },
             ..default()
