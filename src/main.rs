@@ -1,4 +1,3 @@
-use bevy::asset::AssetServerSettings;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::diagnostic::LogDiagnosticsPlugin;
 use bevy::prelude::shape::Quad;
@@ -71,7 +70,7 @@ fn setup_shadow_pass_system(
     *shadow_map = ShadowMap(Some(shadow_map_handle.clone()));
 
     commands
-        .spawn_bundle(new_light_camera(shadow_map_handle))
+        .spawn(new_light_camera(shadow_map_handle))
         .insert(LIGHT_PASS_LAYER);
 }
 
@@ -84,7 +83,7 @@ fn spawn_objects_system(
     shadow_map: Res<ShadowMap>,
 ) {
     let mesh = Mesh::from(Quad::new(Vec2::new(1000.0, 1000.0)));
-    commands.spawn_bundle(MaterialMesh2dBundle {
+    commands.spawn(MaterialMesh2dBundle {
         mesh: Mesh2dHandle(meshes.add(mesh)),
         material: custom_materials.add(ShadowMaterial::new(
             asset_server.load("floor.png"),
@@ -98,7 +97,7 @@ fn spawn_objects_system(
         ..default()
     };
     commands
-        .spawn_bundle(MaterialMesh2dBundle::<ColorMaterial> {
+        .spawn(MaterialMesh2dBundle::<ColorMaterial> {
             mesh: Mesh2dHandle(meshes.add(mesh.clone())),
             material: color_materials.add(color_material.clone()),
             transform: Transform {
@@ -109,7 +108,7 @@ fn spawn_objects_system(
         })
         .insert(ShadowCaster::new());
     commands
-        .spawn_bundle(MaterialMesh2dBundle::<ColorMaterial> {
+        .spawn(MaterialMesh2dBundle::<ColorMaterial> {
             mesh: Mesh2dHandle(meshes.add(mesh)),
             material: color_materials.add(color_material),
             transform: Transform {
@@ -124,25 +123,30 @@ fn spawn_objects_system(
 fn main() {
     let mut app = App::new();
 
-    app.add_plugins(DefaultPlugins)
-        .add_plugin(Material2dPlugin::<ShadowMaterial>::default())
-        .add_plugin(FrameTimeDiagnosticsPlugin)
-        .add_plugin(LogDiagnosticsPlugin::default())
-        .add_plugin(ShadowPlugin)
-        .insert_resource(AssetServerSettings {
-            watch_for_changes: true,
-            ..default()
-        })
-        .insert_resource(WindowDescriptor {
-            present_mode: PresentMode::Immediate,
-            ..default()
-        })
-        .insert_resource(MousePosition::default())
-        .add_startup_system(spawn_objects_system.after(setup_shadow_pass_system))
-        .add_startup_system(setup_camera_system)
-        .add_startup_system(spawn_lights_system)
-        .add_system(move_light_system)
-        .add_system(track_mouse_world_position_system);
+    app.add_plugins(
+        DefaultPlugins
+            .set(AssetPlugin {
+                watch_for_changes: true,
+                ..default()
+            })
+            .set(WindowPlugin {
+                window: WindowDescriptor {
+                    present_mode: PresentMode::Immediate,
+                    ..default()
+                },
+                ..default()
+            }),
+    )
+    .add_plugin(Material2dPlugin::<ShadowMaterial>::default())
+    .add_plugin(FrameTimeDiagnosticsPlugin)
+    .add_plugin(LogDiagnosticsPlugin::default())
+    .add_plugin(ShadowPlugin)
+    .insert_resource(MousePosition::default())
+    .add_startup_system(spawn_objects_system.after(setup_shadow_pass_system))
+    .add_startup_system(setup_camera_system)
+    .add_startup_system(spawn_lights_system)
+    .add_system(move_light_system)
+    .add_system(track_mouse_world_position_system);
 
     app.run();
 }

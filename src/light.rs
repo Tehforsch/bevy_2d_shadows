@@ -34,7 +34,7 @@ pub fn spawn_lights_system(
         });
 
         commands
-            .spawn_bundle(ColorMesh2dBundle {
+            .spawn(ColorMesh2dBundle {
                 mesh: Mesh2dHandle(mesh.clone()),
                 material: mat.clone(),
                 ..default()

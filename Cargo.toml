@@ -6,6 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { version = "0.8.0", default-features = false, features = ["render", "x11", "png", "bevy_winit", "serialize", "filesystem_watcher", "dynamic"]}
-bytemuck = "1.11.0"
-ordered-float = "3.0.0"
+bevy = { version = "0.9.1", default-features = false, features = ["render", "x11", "png", "bevy_winit", "serialize", "filesystem_watcher", "dynamic"]}
+bytemuck = "1.12.3"
+ordered-float = "3.4.0"

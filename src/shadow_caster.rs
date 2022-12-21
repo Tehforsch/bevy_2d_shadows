@@ -65,7 +65,7 @@ pub fn spawn_shadows_system(
                     });
 
                     let entity = commands
-                        .spawn_bundle(ColorMesh2dBundle {
+                        .spawn(ColorMesh2dBundle {
                             mesh: Mesh2dHandle(handle.clone()),
                             material: mat.clone(),
                             transform: Transform {

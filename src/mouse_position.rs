@@ -3,7 +3,7 @@ use bevy::prelude::*;
 
 use crate::world_camera::WorldCamera;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Resource)]
 pub struct MousePosition {
     pub window: Vec2,
     pub world: Vec4,

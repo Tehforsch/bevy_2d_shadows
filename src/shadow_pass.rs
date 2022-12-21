@@ -10,7 +10,7 @@ pub const LIGHT_PASS_LAYER: RenderLayers = RenderLayers::layer(1);
 #[derive(Component, Default)]
 pub struct LightPassCamera;
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Resource)]
 pub struct ShadowMap(pub Option<Handle<Image>>);
 
 pub fn new_light_camera(render_target: Handle<Image>) -> Camera2dBundle {
